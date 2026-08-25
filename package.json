@@ -1,0 +1,75 @@
+{
+  "name": "orbsniper",
+  "version": "1.4.0",
+  "description": "OrbSniper farms Discord Orbs for you. Auto-accepts, completes and claims Discord Quests while you AFK. No token needed.",
+  "keywords": [
+    "discord",
+    "quests",
+    "orbs",
+    "electron",
+    "automation",
+    "farming"
+  ],
+  "homepage": "https://github.com/syntaxixr/OrbSniper",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/syntaxixr/OrbSniper.git"
+  },
+  "bugs": {
+    "url": "https://github.com/syntaxixr/OrbSniper/issues"
+  },
+  "main": "main.js",
+  "author": "synaps_ss",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.synaps.orbsniper",
+    "productName": "OrbSniper",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "quest.js",
+      "renderer/**/*",
+      "icon.ico",
+      "package.json"
+    ],
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "OrbSniper.exe"
+    },
+    "electronLanguages": [
+      "en-US",
+      "ru"
+    ]
+  }
+}

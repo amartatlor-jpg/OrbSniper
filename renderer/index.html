@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ru" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:">
+  <title>OrbSniper</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="titlebar">
+  <div class="tb-left">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="12" class="lg-ring"/>
+      <circle cx="16" cy="16" r="4.5" class="lg-core"/>
+    </svg>
+    <span class="tb-name">OrbSniper</span>
+  </div>
+
+  <div class="tb-right">
+    <div class="lang" id="lang-wrap">
+      <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">
+        <span id="lang-cur">RU</span>
+        <svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="lang-menu" id="lang-menu" role="listbox" hidden></div>
+    </div>
+    <button class="tb-btn" id="btn-help" aria-label="?">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.9 2.9 0 0 1 5.6 1c0 1.9-2.8 2.4-2.8 4"/><path d="M12 17.4h.01"/></svg>
+    </button>
+    <button class="tb-btn" id="btn-min" aria-label="—">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+    </button>
+    <button class="tb-btn tb-close" id="btn-close" aria-label="X">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <section class="status" id="status">
+    <div class="st-row">
+      <span class="beacon" id="beacon"></span>
+      <h1 id="status-text" data-i18n="st_idle">Готов к запуску</h1>
+    </div>
+    <p class="st-hint" id="status-hint" data-i18n="hint_idle">Нажми «Начать» — Discord перезапустится, квесты начнут приниматься и докручиваться сами.</p>
+
+    <progress class="bar" id="bar" max="100" value="0" hidden></progress>
+
+    <div class="facts" id="facts" hidden>
+      <span class="fact"><b id="f-target">—</b></span>
+      <span class="fact" id="f-pct">0%</span>
+      <span class="fact" id="f-time">0:00</span>
+      <span class="fact"><span data-i18n="f_claimed">забрано</span> <b id="f-claimed">0</b></span>
+    </div>
+
+    <div class="tally" id="tally" hidden>
+      <span class="tl-item ok"><b id="tl-done">0</b> <span data-i18n="tl_done">выполнено</span></span>
+      <span class="tl-sep">·</span>
+      <span class="tl-item"><b id="tl-left">0</b> <span data-i18n="tl_left">осталось</span></span>
+      <span class="tl-manual" id="tl-manual" hidden><b id="tl-manual-n">0</b> <span data-i18n="tl_manual">забрать вручную</span></span>
+    </div>
+  </section>
+
+  <section class="controls">
+    <button class="btn primary" id="btn-start">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z"/></svg>
+      <span data-i18n="btn_start">Начать</span>
+    </button>
+    <button class="btn" id="btn-stop" disabled>
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+      <span data-i18n="btn_stop">Стоп</span>
+    </button>
+    <button class="btn" id="btn-skip" disabled>
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5l8 7-8 7zM17 5v14"/></svg>
+      <span data-i18n="btn_skip">Пропустить</span>
+    </button>
+  </section>
+
+  <section class="console">
+    <div class="cn-head">
+      <span class="cn-title" data-i18n="console">Консоль</span>
+      <div class="cn-tools">
+        <div class="filters">
+          <button class="f on" data-filter="all" data-i18n="f_all">Всё</button>
+          <button class="f" data-filter="ok" data-i18n="f_ok">Успех</button>
+          <button class="f" data-filter="err" data-i18n="f_err">Ошибки</button>
+        </div>
+        <button class="ghost" id="btn-copylog">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>
+          <span id="copylog-label" data-i18n="copy">Копировать</span>
+        </button>
+        <button class="ghost" id="btn-clearlog">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>
+          <span data-i18n="clear">Очистить</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="cn-body" id="cn-body">
+      <div class="empty" id="empty">
+        <svg class="empty-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+        <span data-i18n="empty">Здесь появится всё, что делает программа — шаг за шагом.</span>
+      </div>
+      <div class="log" id="log" role="log" aria-live="polite"></div>
+      <button class="jump" id="jump" hidden>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+        <span data-i18n="jump">Новые записи</span>
+      </button>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="ft-left">
+    <span class="ft-author">synaps_ss</span>
+    <button class="ft-link" id="lnk-tg" title="Telegram"><svg class="brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.015 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg><span>Telegram</span></button>
+    <button class="ft-link" id="lnk-gh" title="GitHub"><svg class="brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg><span>GitHub</span></button>
+  </div>
+  <button class="btn small accent" id="btn-donate">
+    <span data-i18n="donate">Поддержать</span>
+  </button>
+</footer>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="modal" id="modal-help" hidden role="dialog" aria-modal="true" aria-labelledby="help-title">
+  <div class="md-head">
+    <h2 id="help-title" data-i18n="help_title">Как это работает</h2>
+    <button class="md-x" data-close aria-label="X">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="md-body">
+    <ol class="steps">
+      <li><b data-i18n="help_s1_t">Подготовка</b><span data-i18n="help_s1_b">Установи Discord и войди в аккаунт. Держи это окно открытым — закроешь, фарм остановится.</span></li>
+      <li><b data-i18n="help_s2_t">Запуск</b><span data-i18n="help_s2_b">Жми «Начать». Discord перезапустится с отладочным портом, логика квестов впрыснется в твой клиент.</span></li>
+      <li><b data-i18n="help_s3_t">Работа</b><span data-i18n="help_s3_b">Квесты принимаются и докручиваются сами. Новые проверяются каждые 20 секунд.</span></li>
+      <li><b data-i18n="help_s4_t">Управление</b><span data-i18n="help_s4_b">«Пропустить» — бросить текущий квест. «Стоп» — прекратить всё, Discord останется открытым.</span></li>
+    </ol>
+    <div class="faq">
+      <div class="faq-q" data-i18n="faq_1_q">Квест висит на 0% — почему?</div>
+      <div class="faq-a" data-i18n="faq_1_a">Стрим-квесты Discord проверяет на своей стороне: нужен настоящий стрим в голосовом канале. Через 3 минуты без прогресса квест пропускается сам.</div>
+      <div class="faq-q" data-i18n="faq_2_q">Токен в безопасности?</div>
+      <div class="faq-a" data-i18n="faq_2_a">Токен не читается, не хранится и никуда не уходит. Все запросы делает сам Discord из твоей сессии.</div>
+      <div class="faq-q" data-i18n="faq_3_q">Vencord и BetterDiscord мешают?</div>
+      <div class="faq-a" data-i18n="faq_3_a">Нет, конфликтов нет.</div>
+    </div>
+    <div class="md-note">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg>
+      <span><b data-i18n="vpn_t">Из России — только с VPN.</b> <span data-i18n="vpn_b">Discord в России заблокирован: без VPN не откроется ни клиент, ни магазин с квестами и орбами. Включи VPN до нажатия «Начать» и не выключай, пока идёт фарм.</span></span>
+    </div>
+
+    <div class="md-warn">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+      <span data-i18n="help_warn">Автоматизация квестов нарушает правила Discord. С апреля 2026 её ловят: предупреждение, ограничение квестов, вплоть до блокировки. Используй запасной аккаунт — ответственность на тебе.</span>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-donate" hidden role="dialog" aria-modal="true" aria-labelledby="donate-title">
+  <div class="md-head">
+    <h2 id="donate-title" data-i18n="donate_title">Поддержать автора</h2>
+    <button class="md-x" data-close aria-label="X">
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="md-body">
+    <p class="md-lead" data-i18n="donate_lead">OrbSniper бесплатный и с открытым кодом. Если он сэкономил тебе время — закинь автору на кофе.</p>
+
+    <div class="crypto">
+      <div class="cr-head">
+        <span class="cr-net">USDT · TRC20</span>
+        <span class="cr-warn" data-i18n="donate_net">Только сеть TRON (TRC20)</span>
+      </div>
+      <div class="cr-row">
+        <code class="cr-addr" id="cr-addr">TJXGAkovUoA2z9C7mWBiB9SGLVQu6oSsf</code>
+        <button class="btn small accent" id="btn-copyaddr">
+          <span id="copyaddr-label" data-i18n="copy">Копировать</span>
+        </button>
+      </div>
+      <img class="cr-qr" id="cr-qr" src="assets/donate-qr.png" alt="QR USDT TRC20">
+    </div>
+
+    <div class="contacts">
+      <button class="contact tg" id="lnk-tg2">
+        <span class="c-badge"><svg class="brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.015 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg></span>
+        <span class="c-txt"><span class="c-t">Telegram</span><span class="c-s">@synaps_ss</span></span>
+        <svg class="go" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
+      </button>
+      <button class="contact gh" id="lnk-gh2">
+        <span class="c-badge"><svg class="brand" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></span>
+        <span class="c-txt"><span class="c-t">GitHub</span><span class="c-s" id="gh-handle">OrbSniper</span></span>
+        <svg class="go" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- finish screen -->
+<div class="finish" id="finish" hidden>
+  <div class="finish-card">
+    <svg class="fin-mark" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" class="fm-ring"/>
+      <path d="M7.5 12.4l3 3 6-6.5" class="fm-tick"/>
+    </svg>
+
+    <h1 class="finish-title shine" data-i18n="fin_title">Всё готово</h1>
+    <p class="finish-lead" id="finish-lead" data-i18n="fin_lead">Все квесты обработаны.</p>
+
+    <div class="fin-stats">
+      <div class="fs-box">
+        <b id="fin-done">0</b>
+        <span data-i18n="fin_done">квестов выполнено</span>
+      </div>
+      <div class="fs-box" id="fin-manual-box" hidden>
+        <b id="fin-manual" class="warn-n">0</b>
+        <span data-i18n="fin_manual">забрать вручную</span>
+      </div>
+    </div>
+
+    <div class="fin-note" id="fin-note" hidden>
+      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7"/><path d="M2 7h20v5H2zM12 21V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+      <span data-i18n="fin_note">Часть наград Discord не отдал сам — забери их вручную во вкладке «Квесты» в Discord.</span>
+    </div>
+
+    <div class="fin-actions">
+      <button class="btn primary" id="btn-fin-ok">
+        <span data-i18n="fin_ok">Понятно</span>
+      </button>
+      <button class="btn" id="btn-fin-donate">
+        <span data-i18n="donate">Поддержать</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<!-- disclaimer -->
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <svg class="gate-mark" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3l8 3.6v5c0 4.6-3.2 8.2-8 9.4-4.8-1.2-8-4.8-8-9.4v-5z"/>
+      <path d="M12 8.6v4.2M12 16.1h.01" class="gm-bang"/>
+    </svg>
+
+    <h1 class="gate-title shine" data-i18n="ob_title">Прежде чем начать</h1>
+    <p class="gate-lead" data-i18n="ob_lead">OrbSniper автоматизирует квесты за тебя. Discord это запрещает и умеет отслеживать.</p>
+
+    <ol class="risks">
+      <li><span class="rk rk-1"></span><span data-i18n="ob_r1">Сначала — предупреждение от Discord.</span></li>
+      <li><span class="rk rk-2"></span><span data-i18n="ob_r2">Потом — доступ к квестам закрывают.</span></li>
+      <li><span class="rk rk-3"></span><span data-i18n="ob_r3">При повторах — блокировка аккаунта.</span></li>
+    </ol>
+
+    <blockquote class="quote">
+      <span data-i18n="ob_quote">«Автоматизация пользовательского аккаунта нарушает Условия использования Discord и может привести к блокировке аккаунта».</span>
+      <cite>Discord · Automated User Accounts (Self-Bots)</cite>
+    </blockquote>
+
+    <div class="gate-links">
+      <button class="linkbtn" id="lnk-policy">
+        <span data-i18n="ob_link_policy">Правило Discord о самоботах</span>
+        <svg class="go" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
+      </button>
+      <button class="linkbtn" id="lnk-tos">
+        <span data-i18n="ob_link_tos">Условия использования</span>
+        <svg class="go" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8"/></svg>
+      </button>
+    </div>
+
+    <label class="agree">
+      <input type="checkbox" id="agree-box">
+      <span data-i18n="ob_agree">Я понимаю риск и беру ответственность на себя. Буду использовать запасной аккаунт.</span>
+    </label>
+
+    <div class="gate-actions">
+      <button class="btn primary" id="btn-agree" disabled>
+        <span data-i18n="ob_accept">Согласен, продолжить</span>
+      </button>
+      <button class="btn" id="btn-quit">
+        <span data-i18n="ob_quit">Выйти</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 340" width="1200" height="340" role="img" aria-label="OrbSniper">
+  <defs>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc352"/>
+      <stop offset="0.55" stop-color="#ffab1a"/>
+      <stop offset="1" stop-color="#e08a00"/>
+    </linearGradient>
+    <radialGradient id="orbGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffab1a" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#ffab1a" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#ffab1a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.45"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="340" rx="24" fill="#08090c"/>
+
+  <!-- grid -->
+  <g stroke="#161a21" stroke-width="1">
+    <path d="M0 60h1200M0 120h1200M0 180h1200M0 220h1200M0 280h1200"/>
+    <path d="M120 0v340M240 0v340M360 0v340M840 0v340M960 0v340M1080 0v340"/>
+  </g>
+
+  <!-- scope mark -->
+  <g transform="translate(190 170)">
+    <circle r="120" fill="url(#orbGlow)"/>
+
+    <g stroke="#333944" stroke-width="2" fill="none">
+      <circle r="96"/>
+      <circle r="70" stroke-dasharray="3 9" opacity="0.8"/>
+    </g>
+
+    <g stroke="#ffab1a" stroke-width="5" stroke-linecap="round">
+      <path d="M0 -108v34M0 74v34M-108 0h34M74 0h34"/>
+    </g>
+
+    <g stroke="#4a5261" stroke-width="3" stroke-linecap="round">
+      <path d="M-30 -46h12M-30 -24h12M-30 -2h12M-30 20h12M-30 42h12"/>
+    </g>
+
+    <circle r="34" fill="url(#amber)"/>
+    <circle r="34" fill="url(#sheen)"/>
+    <circle r="11" fill="#08090c" opacity="0.28"/>
+  </g>
+
+  <!-- wordmark -->
+  <g transform="translate(390 0)">
+    <text x="0" y="164"
+          font-family="Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="96" font-weight="700" letter-spacing="-3" fill="#f2f4f7">Orb<tspan fill="url(#amber)">Sniper</tspan></text>
+
+    <text x="4" y="216"
+          font-family="Segoe UI, Helvetica Neue, Arial, sans-serif"
+          font-size="28" font-weight="500" fill="#98a1ae">Фармит Discord Orbs, пока ты занят своими делами</text>
+
+    <g transform="translate(4 250)">
+      <rect width="132" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
+      <text x="66" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+            font-size="15" font-weight="600" fill="#98a1ae">без токена</text>
+
+      <rect x="144" width="150" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
+      <text x="219" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+            font-size="15" font-weight="600" fill="#98a1ae">10 языков</text>
+
+      <rect x="306" width="176" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
+      <text x="394" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+            font-size="15" font-weight="600" fill="#98a1ae">открытый код</text>
+    </g>
+  </g>
+</svg>
