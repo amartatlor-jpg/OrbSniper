@@ -17,7 +17,7 @@
     </linearGradient>
   </defs>
 
-  <rect width="1200" height="340" rx="24" fill="#08090c"/>
+  <rect width="1200" height="340" fill="#08090c"/>
 
   <!-- grid -->
   <g stroke="#161a21" stroke-width="1">
@@ -55,20 +55,24 @@
 
     <text x="4" y="216"
           font-family="Segoe UI, Helvetica Neue, Arial, sans-serif"
-          font-size="28" font-weight="500" fill="#98a1ae">Фармит Discord Orbs, пока ты занят своими делами</text>
+          font-size="28" font-weight="500" fill="#98a1ae">Farms Discord Orbs while you are away</text>
 
     <g transform="translate(4 250)">
-      <rect width="132" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
-      <text x="66" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
-            font-size="15" font-weight="600" fill="#98a1ae">без токена</text>
+      <rect width="126" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
+      <text x="63" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+            font-size="15" font-weight="600" fill="#98a1ae">no token</text>
 
-      <rect x="144" width="150" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
-      <text x="219" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
-            font-size="15" font-weight="600" fill="#98a1ae">10 языков</text>
+      <rect x="138" width="150" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
+      <text x="213" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+            font-size="15" font-weight="600" fill="#98a1ae">10 languages</text>
 
-      <rect x="306" width="176" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
-      <text x="394" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
-            font-size="15" font-weight="600" fill="#98a1ae">открытый код</text>
+      <rect x="300" width="150" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
+      <text x="375" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+            font-size="15" font-weight="600" fill="#98a1ae">open source</text>
+
+      <rect x="462" width="126" height="34" rx="8" fill="#15181e" stroke="#23272f"/>
+      <text x="525" y="23" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+            font-size="15" font-weight="600" fill="#ffab1a">free</text>
     </g>
   </g>
 </svg>

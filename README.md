@@ -2,64 +2,88 @@
 
 <img src="docs/logo.png" alt="OrbSniper" width="820">
 
-### Тёмное окно, одна кнопка
+**English** · [Русский](README.ru.md)
 
-Принимает квесты, докручивает их и забирает награды прямо в твоём Discord.
-Без токена, без установки игр, без 500 ГБ загрузок.
+### One dark window, one button
 
-[![License: MIT](https://img.shields.io/badge/лицензия-MIT-ffab1a?style=flat-square)](LICENSE) [![Platform](https://img.shields.io/badge/платформа-Windows-4493f8?style=flat-square)](#что-нужно) [![Electron](https://img.shields.io/badge/Electron-33-47848F?style=flat-square&logo=electron&logoColor=white)](#) [![Languages](https://img.shields.io/badge/языков-10-5ecb84?style=flat-square)](#языки) [![Downloads](https://img.shields.io/github/downloads/syntaxixr/OrbSniper/total?style=flat-square&color=98a1ae&label=скачиваний)](../../releases)
+It accepts Discord Quests, completes them and claims the rewards inside your own Discord client.
+No token, no game installs, no 500 GB downloads.
+
+[![License](https://img.shields.io/badge/license-MIT-ffab1a?style=flat-square)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-4493f8?style=flat-square)](#requirements) [![Electron](https://img.shields.io/badge/Electron-33-47848F?style=flat-square&logo=electron&logoColor=white)](#) [![Languages](https://img.shields.io/badge/languages-10-5ecb84?style=flat-square)](#languages) [![Downloads](https://img.shields.io/github/downloads/syntaxixr/OrbSniper/total?style=flat-square&color=98a1ae&label=downloads)](../../releases)
+
+[**Download**](../../releases/latest) · [What are Orbs?](#what-are-orbs) · [What it does](#what-it-does) · [FAQ](#faq)
 
 </div>
 
 ---
 
 > [!CAUTION]
-> **Автоматизация квестов нарушает правила Discord.** С апреля 2026 её активно ловят: сначала предупреждение, потом закрывают доступ к квестам, при повторах — блокировка аккаунта. Гоняй на запасном аккаунте. Ответственность полностью на тебе. Проект сделан в образовательных целях.
+> **Automating quests breaks Discord's rules.** Since April 2026 it is actively detected: first a warning, then quest access gets restricted, and repeat offences can suspend the account. Use an alt account. All risk is on you. This project exists for educational purposes.
 >
-> Правило Discord: [Automated User Accounts (Self-Bots)](https://support.discord.com/hc/ru/articles/115002192352)
+> Discord's policy: [Automated User Accounts (Self-Bots)](https://support.discord.com/hc/en-us/articles/115002192352)
 
 > [!IMPORTANT]
-> **Из России — только с VPN.** Discord в России заблокирован: без VPN не откроется ни клиент, ни магазин с квестами и орбами. Включи VPN до запуска и не выключай, пока идёт фарм.
+> **From Russia you need a VPN.** Discord is blocked there: without a VPN neither the client nor the quest shop will load. Turn the VPN on before you start and keep it on while farming.
 
-## Что делает
+## What are Orbs?
 
-Жмёшь **Начать** — и дальше приложение работает само:
+**Orbs are Discord's own currency.** You earn them by completing Quests — those sponsored "play this game for 15 minutes" tasks that show up in your Discord. A typical quest pays around **700 Orbs**, and Nitro subscribers get 250 Orbs a month on top.
 
-- **Проверяет всё перед стартом** — есть ли Discord, пишутся ли настройки, свободен ли порт, отвечает ли сеть. Что не так — скажет прямо, а не упадёт посреди процесса.
-- **Следит за квестами** круглосуточно, пока окно открыто — новые подхватывает каждые 20 секунд.
-- **Принимает квесты** сам, платформа PC выбирается автоматически.
-- **Докручивает их:**
-  - `WATCH_VIDEO` / `WATCH_VIDEO_ON_MOBILE` — подделывает прогресс просмотра
-  - `PLAY_ON_DESKTOP` — выдаёт игру за запущенную (устанавливать ничего не нужно)
-  - `PLAY_ACTIVITY` — шлёт heartbeat активности
-  - `STREAM_ON_DESKTOP` — подделывает метаданные стрима (может потребоваться реальный стрим в голосовом канале)
-- **Забирает награды** автоматически, если Discord не требует капчу.
-- **Пропускает застрявшие** — вручную кнопкой или само через 3 минуты без прогресса.
-- **Показывает счёт:** сколько выполнено, сколько осталось, сколько наград нужно забрать самому.
-- **В конце говорит, что всё готово** — и напоминает забрать награды, которые Discord не отдал сам.
+What you can spend them on, straight from Discord's shop:
 
-## Консоль говорит по-человечески
+| Reward | Cost |
+|---|---|
+| **Nitro credit, 3 days** | 1,400 Orbs (≈ two quests) |
+| Avatar decorations | varies |
+| Profile effects | varies |
+| Nameplates | varies |
+| Orbs Apprentice badge | 3,500 Orbs spent in the Orbs Exclusives shop |
 
-Никаких сырых английских логов. Вместо `Webpack never became ready` — «Discord не успел загрузиться. Перезапусти его и попробуй снова». Ошибки красным, успех зелёным, предупреждения жёлтым. Есть фильтры, копирование и очистка.
+There are also seven decorations you can **only** get with Orbs — no money buys them.
 
-## Почему не нужен токен
+**The catch:** quests want you to actually install games and sit there for 15–30 minutes each. OrbSniper does that part for you, so the Orbs land in your account while you do something else. Everything stays free — you spend time, not money.
 
-OrbSniper не спрашивает токен и никогда его не читает. Вместо этого он перезапускает **твой собственный установленный Discord** с портом отладки и впрыскивает логику квестов внутрь. Все запросы делает сам Discord из твоей сессии — утекать нечему, вставлять никуда ничего не надо.
+> Orbs can't be used for gifts, partner-branded shop items, a recurring Nitro subscription or Server Boosts.
 
-## Что нужно
+## What it does
+
+Hit **Start** and the app runs on its own:
+
+- **Checks everything before launching** — is Discord installed, are its settings writable, is the port free, does the network respond. If something's wrong it tells you plainly instead of dying halfway through.
+- **Watches for quests** the whole time the window is open — new ones are picked up every 20 seconds.
+- **Accepts quests** for you, PC platform selected automatically.
+- **Completes them:**
+  - `WATCH_VIDEO` / `WATCH_VIDEO_ON_MOBILE` — spoofs watch progress
+  - `PLAY_ON_DESKTOP` — reports the game as running (nothing gets installed)
+  - `PLAY_ACTIVITY` — sends activity heartbeats
+  - `STREAM_ON_DESKTOP` — spoofs stream metadata (may need a real voice-channel stream)
+- **Claims rewards** automatically unless Discord asks for a captcha.
+- **Skips stuck quests** — by button, or on its own after 3 minutes without progress.
+- **Keeps score:** how many quests are done, how many are left, how many rewards you still need to claim by hand.
+- **Tells you when everything is finished** — and reminds you about rewards Discord wouldn't hand over.
+
+## The console speaks plain English
+
+No raw engine logs. Instead of `Webpack never became ready` you get "Discord didn't finish loading. Restart it and try again." Errors in red, successes in green, warnings in yellow. Filters, copy and clear included.
+
+## Why no token
+
+OrbSniper never asks for your token and never reads it. Instead it relaunches **your own installed Discord** with a debugging port and injects the quest logic into it. Every request is made by Discord itself from your own session — nothing to leak, nothing to paste anywhere.
+
+## Requirements
 
 - Windows
-- Discord (десктопное приложение), установленный и с выполненным входом
-- VPN, если ты в России
-- Для запуска из исходников: [Node.js 18+](https://nodejs.org/)
+- Discord desktop app, installed and logged in
+- A VPN if you're in Russia
+- To run from source: [Node.js 18+](https://nodejs.org/)
 
-## Установка
+## Install
 
-Скачай `OrbSniper.exe` из [релизов](../../releases) и запусти. Node.js на машине не нужен.
+Grab `OrbSniper.exe` from [releases](../../releases/latest) and run it. No Node.js needed.
 
-При первом запуске появится экран ознакомления с рисками — прочитай, поставь галочку, и он больше не покажется.
+A risk disclaimer shows on every launch — read it, tick the box, continue.
 
-## Запуск из исходников
+## Run from source
 
 ```bash
 git clone https://github.com/syntaxixr/OrbSniper.git
@@ -68,93 +92,96 @@ npm install
 npm start
 ```
 
-## Сборка exe
+## Build the exe
 
 ```bash
 npm run dist
 ```
 
-или просто запусти `build.bat`. Результат:
+or just run `build.bat`. You get:
 
-- `dist\OrbSniper.exe` — портативный файл, один экземпляр, можно носить на флешке. Запускается ~8 секунд: распаковывает себя во временную папку.
-- `dist\win-unpacked\` — распакованная сборка. Запускается меньше чем за секунду. Скопируй папку куда угодно и сделай ярлык на `OrbSniper.exe`.
+- `dist\OrbSniper.exe` — single portable file, fine for a USB stick. Takes ~8 seconds to start: it unpacks itself into a temp folder every time.
+- `dist\win-unpacked\` — the unpacked build. Starts in under a second. Copy the folder anywhere and make a shortcut to `OrbSniper.exe`.
 
-## Управление
+## Controls
 
-| Кнопка | Что делает |
+| Button | What it does |
 |---|---|
-| **Начать** | Проверяет условия, перезапускает Discord, впрыскивает логику, начинает фарм |
-| **Стоп** | Прекращает всё немедленно. Discord остаётся открытым |
-| **Пропустить** | Бросает текущий квест и переходит к следующему |
-| **?** | Инструкция, FAQ и предупреждения |
+| **Start** | Runs the checks, relaunches Discord, injects the logic, starts farming |
+| **Stop** | Ends everything immediately. Discord stays open |
+| **Skip** | Drops the current quest and moves to the next one |
+| **?** | Instructions, FAQ and warnings |
 
-Закрыл окно — фарм остановился. Discord продолжит работать.
+Close the window and farming stops. Discord keeps running.
 
-## Языки
+## Languages
 
-Русский, English, 中文, Español, Português, Deutsch, Français, Polski, Türkçe, Українська.
+English, Русский, 中文, Español, Português, Deutsch, Français, Polski, Türkçe, Українська.
 
-Язык определяется по системе при первом запуске, дальше запоминается выбор.
+The language is picked from your system on first launch, then your choice is remembered.
 
-## Вопросы
+## FAQ
 
-**Квест висит на 0% — почему?**
-Стрим-квесты Discord проверяет на своей стороне: нужен настоящий стрим в голосовом канале. Через 3 минуты без прогресса квест пропускается сам.
+**A quest is stuck at 0% — why?**
+Discord validates stream quests on its side: they need a real stream in a voice channel. After 3 minutes without progress the quest is skipped automatically.
 
-**Токен в безопасности?**
-Токен не читается, не хранится и никуда не отправляется. Все запросы идут изнутри твоего собственного Discord.
+**Is my token safe?**
+Your token is never read, stored or sent anywhere. Every request comes from inside your own Discord client.
 
-**Нужно ли принимать квесты вручную?**
-Нет. Если Discord потребует капчу при приёме или выдаче награды, приложение скажет об этом — такой квест забери руками, остальные продолжат фармиться.
+**Do I have to accept quests manually?**
+No. If Discord throws a captcha at acceptance or when claiming, the app says so — handle that one by hand, the rest keep farming.
 
-**Vencord / BetterDiscord мешают?**
-Нет, конфликтов нет.
+**Do Vencord / BetterDiscord conflict?**
+No, they work fine alongside it.
 
-**Ничего не запускается, красная ошибка про сеть.**
-Значит Discord недоступен. Включи VPN и попробуй снова.
+**Nothing starts, red error about the network.**
+Discord is unreachable. Turn on a VPN and try again.
 
-## Автор
+**Will this get me banned?**
+It can. Discord detects quest automation and punishes it — warning, quest restrictions, up to suspension. Use an account you can afford to lose.
+
+## Author
 
 <div align="center">
 
-### Проект сделал **synaps_ss**
+### Made by **synaps_ss**
 
 [![Telegram](https://img.shields.io/badge/Telegram-@synaps__ss-229ED9?logo=telegram&logoColor=white)](https://t.me/synaps_ss)
 [![GitHub](https://img.shields.io/badge/GitHub-syntaxixr-181717?logo=github&logoColor=white)](https://github.com/syntaxixr)
 
-**Идея, код, дизайн, переводы — целиком авторская работа.**
+**Idea, code, design and translations — all original work.**
 
-По любым вопросам, багам и предложениям пиши в Telegram: [@synaps_ss](https://t.me/synaps_ss)
+Questions, bugs, ideas: [@synaps_ss](https://t.me/synaps_ss) on Telegram
 
 </div>
 
-## Правила использования
+## Terms of use
 
-Проект бесплатный и с открытым кодом под [MIT](LICENSE). Пользуйся, изучай, меняй под себя — всё это разрешено. Но по-человечески прошу:
+Free and open source under [MIT](LICENSE). Use it, study it, change it for yourself — all allowed. But one human request:
 
 > [!IMPORTANT]
-> ### 🚫 Не перезаливайте проект как свой
+> ### 🚫 Don't re-upload this as your own
 >
-> Если выкладываете OrbSniper где-то ещё — на форумах, в Telegram-каналах, на файлообменниках, в подборках, в видео — **обязательно указывайте автора и ссылку на оригинал:**
+> If you post OrbSniper anywhere else — forums, Telegram channels, file hosts, roundups, videos — **credit the author and link the original:**
 >
-> - **Автор:** synaps_ss — Telegram [@synaps_ss](https://t.me/synaps_ss)
-> - **Оригинал:** https://github.com/syntaxixr/OrbSniper
+> - **Author:** synaps_ss — Telegram [@synaps_ss](https://t.me/synaps_ss)
+> - **Original:** https://github.com/syntaxixr/OrbSniper
 >
-> Это не прихоть: лицензия MIT прямо требует сохранять указание авторства в любых копиях и производных работах. Выложить под своим именем, стереть копирайт или продать — нарушение лицензии.
+> This isn't a whim: the MIT licence explicitly requires keeping the copyright notice in every copy and derivative work. Publishing it under your own name, stripping the copyright or selling it breaks the licence.
 >
-> Хочешь доработать? Лучше сделай форк или пришли pull request — так изменения увидят все, а автор останется автором.
+> Want to improve it? Fork it or open a pull request — that way everyone sees your changes and the author stays the author.
 
-**Что можно без вопросов:** пользоваться, форкать с сохранением авторства, менять код под себя, кидать друзьям ссылку на этот репозиторий.
+**Fine, no questions asked:** using it, forking with credit intact, changing the code for yourself, sending friends a link to this repo.
 
-**Что просьба не делать:** перезаливать как свою работу, вырезать упоминания автора, продавать, собирать свои сборки без ссылки на оригинал.
+**Please don't:** re-upload it as your own work, strip mentions of the author, sell it, or ship your own builds without linking the original.
 
-## 💸 Поддержать автора
+## 💸 Support the author
 
-Проект бесплатный и таким останется. Если OrbSniper сэкономил тебе время и нафармил орбов — можешь поблагодарить автора монетой. Это не обязательно, но очень приятно.
+The project is free and will stay that way. If OrbSniper saved you time and farmed you some Orbs, you can thank the author with a coin. Not required, but very much appreciated.
 
 <div align="center">
 
-### USDT · сеть TRON (TRC20)
+### USDT · TRON network (TRC20)
 
 ```
 TJXGAkovUoA2z9C7mWBiB9SGLVQu6oSsf
@@ -162,32 +189,22 @@ TJXGAkovUoA2z9C7mWBiB9SGLVQu6oSsf
 
 ![Donate QR — USDT TRC20](docs/donate-qr.png)
 
-**Сканируй QR любым кошельком**
+**Scan the QR with any wallet**
 
-⚠️ Только сеть **TRC20 (TRON)**. Отправишь через другую сеть — деньги потеряются безвозвратно.
+⚠️ **TRC20 (TRON) only.** Send it through another network and the money is gone for good.
 
-Нет крипты, но хочешь поддержать? Поставь ⭐ репозиторию и расскажи друзьям — это тоже помогает.
+No crypto but still want to help? Star the repo and tell your friends — that counts too.
 
 </div>
 
-## Отказ от ответственности
+## Disclaimer
 
-OrbSniper никак не связан с Discord Inc. и не одобрен ею. Автоматизация квестов нарушает правила Discord — используя проект, ты берёшь все риски на себя. Автор не несёт ответственности за блокировки аккаунтов, потерянный прогресс или любые другие последствия. Проект создан в образовательных целях.
+OrbSniper is not affiliated with or endorsed by Discord Inc. Automating quests breaks Discord's rules — by using this project you accept every risk yourself. The author is not responsible for account suspensions, lost progress or any other consequence. Built for educational purposes.
 
 ---
 
 <div align="center">
 
-**EN** · OrbSniper farms Discord Orbs while you're away. It accepts, completes and claims quests inside your own Discord client — no token, no game installs. Hit **Start** and it runs itself: pre-flight checks, live progress, a plain-language console, and a summary when everything is done. Interface available in 10 languages.
-
-**Created by synaps_ss** — Telegram [@synaps_ss](https://t.me/synaps_ss) · GitHub [syntaxixr](https://github.com/syntaxixr)
-
-> **Please don't re-upload this as your own work.** MIT requires keeping the copyright notice in every copy and derivative. If you share OrbSniper anywhere, credit the author and link the original: `https://github.com/syntaxixr/OrbSniper`. Want changes? Fork it or open a pull request.
-
-**Support the author — USDT (TRC20 only):** `TJXGAkovUoA2z9C7mWBiB9SGLVQu6oSsf`
-
-Automating quests violates Discord's [Terms of Service](https://discord.com/terms) and is actively detected — use an alt account, at your own risk. Not affiliated with Discord Inc.
-
-MIT · © 2026 synaps_ss
+**MIT** · © 2026 synaps_ss · [Русская версия](README.ru.md)
 
 </div>
