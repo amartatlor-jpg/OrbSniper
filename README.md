@@ -25,6 +25,26 @@ No token, no game installs, no 500 GB downloads.
 > [!IMPORTANT]
 > **From Russia you need a VPN.** Discord is blocked there: without a VPN neither the client nor the quest shop will load. Turn the VPN on before you start and keep it on while farming.
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%">
+<img src="docs/screenshot-working.png" alt="OrbSniper farming quests">
+<p align="center"><b>Farming</b><br>Live progress, score and a console that speaks plain English</p>
+</td>
+<td width="50%">
+<img src="docs/screenshot-finish.png" alt="All quests finished">
+<p align="center"><b>Finished</b><br>Tells you what's done and what's left to claim by hand</p>
+</td>
+</tr>
+</table>
+
+<div align="center">
+<img src="docs/screenshot-disclaimer.png" alt="Risk disclaimer on every launch" width="55%">
+<p><b>Every launch starts here</b> — the risks, Discord's own policy, and a box you have to tick</p>
+</div>
+
 ## What are Orbs?
 
 **Orbs are Discord's own currency.** You earn them by completing Quests — those sponsored "play this game for 15 minutes" tasks that show up in your Discord. A typical quest pays around **700 Orbs**, and Nitro subscribers get 250 Orbs a month on top.

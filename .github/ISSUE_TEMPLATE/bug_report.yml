@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before reporting, please copy the console output from the app — the **Copy** button in the console header grabs everything.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      placeholder: The app closed Discord and then nothing happened.
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: Press Copy in the app's console and paste it here.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OrbSniper version
+      placeholder: v1.4.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+  - type: dropdown
+    id: vpn
+    attributes:
+      label: Are you using a VPN?
+      options:
+        - "No, Discord works without it here"
+        - "Yes"
+    validations:
+      required: true
