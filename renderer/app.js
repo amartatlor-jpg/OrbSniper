@@ -118,6 +118,12 @@ function setButtons() {
   $("btn-skip").disabled = !running;
 }
 
+// The repair button only appears when something actually broke.
+function showRepair(show) {
+  $("btn-repair").hidden = !show;
+  $("btn-repair").disabled = false;
+}
+
 function setBeacon(cls) { $("beacon").className = "beacon " + cls; }
 
 function setStatus(title, hint, beacon, stateCls) {
@@ -248,11 +254,13 @@ const PHASE_HINT = {
 function setPhase(phase) {
   if (phase === "error") {
     running = false;
-    setStatus(t("st_err"), t("hint_err"), "err", "err");
+    setStatus(t("st_err"), t("hint_repair"), "err", "err");
     setButtons();
+    showRepair(true);
     return;
   }
   running = true;
+  showRepair(false);
   const title = phase === "farming" ? t("st_running") : t("st_starting");
   setStatus(title, t(PHASE_HINT[phase] || "hint_starting"), "run", "");
   setButtons();
@@ -385,6 +393,7 @@ document.addEventListener("DOMContentLoaded", () => {
     tally = { total: 0, done: 0, left: 0, manual: 0 };
     $("tally").hidden = true;
     $("finish").hidden = true;
+    showRepair(false);
     $("f-claimed").textContent = "0";
     setButtons();
     setStatus(t("st_starting"), t("hint_starting"), "run", "");
@@ -403,6 +412,24 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btn-skip").addEventListener("click", () => {
     window.sniper.skip();
     say("l_userskip");
+  });
+
+  $("btn-repair").addEventListener("click", async () => {
+    $("btn-repair").disabled = true;
+    running = true;
+    claimed = 0;
+    tally = { total: 0, done: 0, left: 0, manual: 0 };
+    $("tally").hidden = true;
+    $("finish").hidden = true;
+    $("f-claimed").textContent = "0";
+    setButtons();
+    setStatus(t("st_repair"), t("hint_repair_run"), "run", "");
+    const ok = await window.sniper.repair();
+    if (!ok) {
+      running = false;
+      setButtons();
+      showRepair(true);
+    }
   });
 
   document.querySelectorAll(".f").forEach((btn) => {
@@ -463,13 +490,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   window.sniper.onLog(addLog);
-  window.sniper.onSay(({ key, level, arg }) => pushLine(t(key, arg || ""), level || "info"));
+  window.sniper.onSay(({ key, level, args }) => pushLine(t(key, ...(args || [])), level || "info"));
   window.sniper.onPhase(setPhase);
   window.sniper.onStatus(updateQuest);
   window.sniper.onTally(renderTally);
   window.sniper.onRunning((isRunning) => { running = isRunning; setButtons(); });
   window.sniper.onDone(() => {
     running = false;
+    showRepair(false);
     setProgress(100);
     setStatus(t("st_done"), tally.manual ? t("hint_done_manual") : t("hint_done"), "ok", "done");
     setButtons();

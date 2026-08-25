@@ -130,6 +130,7 @@ or just run `build.bat`. You get:
 | **Start** | Runs the checks, relaunches Discord, injects the logic, starts farming |
 | **Stop** | Ends everything immediately. Discord stays open |
 | **Skip** | Drops the current quest and moves to the next one |
+| **Fix and restart** | Appears when something breaks. Force-closes every Discord process, frees the debug port and starts over |
 | **?** | Instructions, FAQ and warnings |
 
 Close the window and farming stops. Discord keeps running.
@@ -156,6 +157,9 @@ No, they work fine alongside it.
 
 **Nothing starts, red error about the network.**
 Discord is unreachable. Turn on a VPN and try again.
+
+**It worked for my friend but not for me.**
+Usually a leftover Discord process holding the debug port. Press **Fix and restart** — it force-closes everything, frees the port and retries. If the console says the port is held by something that isn't Discord, close that program first.
 
 **Will this get me banned?**
 It can. Discord detects quest automation and punishes it — warning, quest restrictions, up to suspension. Use an account you can afford to lose.

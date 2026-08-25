@@ -1,5 +1,5 @@
 /*!
- * OrbSniper v1.4.0 - Discord Orb farmer (GUI)
+ * OrbSniper v1.5.0 - Discord Orb farmer (GUI)
  * Copyright (c) 2026 synaps_ss - tg: @synaps_ss
  * Licensed under MIT. Use at your own risk. Violates Discord ToS.
  */
@@ -7,14 +7,14 @@
 const { app, BrowserWindow, ipcMain, clipboard, shell } = require("electron");
 
 const DONATE_ADDRESS = "TJXGAkovUoA2z9C7mWBiB9SGLVQu6oSsf";
-const { execSync, exec } = require("child_process");
+const { execSync, exec, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const net = require("net");
 const WebSocket = require("ws");
 
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 const PORT = 9222;
 
 let win = null;
@@ -32,7 +32,7 @@ function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 function uiLog(msg) { send("sniper:log", msg); }
-function say(key, level, arg) { send("sniper:say", { key, level, arg }); }
+function say(key, level, ...args) { send("sniper:say", { key, level, args }); }
 function phase(p) { send("sniper:phase", p); }
 
 // ---------- Discord launcher logic ----------
@@ -67,21 +67,138 @@ function enableDevTools() {
   } catch (_) {}
 }
 
+function discordPids() {
+  try {
+    const out = execSync('tasklist /FI "IMAGENAME eq Discord.exe" /FO CSV /NH', { encoding: "utf8" });
+    return out.split("\n")
+      .map((l) => l.split('","')[1])
+      .filter((x) => x && /^\d+$/.test(x.trim()))
+      .map((x) => parseInt(x, 10));
+  } catch (_) { return []; }
+}
+
 function killDiscord() {
   try { execSync("taskkill /F /IM Discord.exe /T", { stdio: "ignore" }); } catch (_) {}
 }
 
+// Kills Discord and waits until the processes are actually gone.
+// A fixed sleep is not enough: if one is still alive, the new instance just
+// forwards its arguments to it and the debug port never opens.
+async function killDiscordAndWait(timeoutMs = 15000) {
+  const started = Date.now();
+  let attempt = 0;
+
+  while (Date.now() - started < timeoutMs) {
+    const pids = discordPids();
+    if (pids.length === 0) return true;
+
+    attempt++;
+    killDiscord();
+    if (attempt > 2) {
+      for (const pid of pids) {
+        try { execSync(`taskkill /F /PID ${pid} /T`, { stdio: "ignore" }); } catch (_) {}
+      }
+    }
+    await sleep(700);
+  }
+  return discordPids().length === 0;
+}
+
+// Returns the PID holding the port, or 0.
+function pidOnPort(port) {
+  try {
+    const out = execSync(`netstat -ano -p TCP | findstr LISTENING | findstr :${port}`, { encoding: "utf8" });
+    const line = out.split("\n").find((l) => l.includes(`:${port}`));
+    if (!line) return 0;
+    const parts = line.trim().split(/\s+/);
+    const pid = parseInt(parts[parts.length - 1], 10);
+    return Number.isFinite(pid) ? pid : 0;
+  } catch (_) { return 0; }
+}
+
+function processName(pid) {
+  try {
+    const out = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { encoding: "utf8" });
+    const m = out.match(/^"([^"]+)"/);
+    return m ? m[1] : "";
+  } catch (_) { return ""; }
+}
+
+// Frees the debug port. Returns "free" | "killed" | "foreign" | "stuck".
+async function freePort(port) {
+  const pid = pidOnPort(port);
+  if (!pid) return "free";
+
+  const name = processName(pid);
+  if (!/discord/i.test(name)) return "foreign";
+
+  try { execSync(`taskkill /F /PID ${pid} /T`, { stdio: "ignore" }); } catch (_) {}
+  for (let i = 0; i < 8; i++) {
+    await sleep(500);
+    if (!pidOnPort(port)) return "killed";
+  }
+  return "stuck";
+}
+
+// Launching through cmd's `start` swallows failures; spawn tells us if it broke.
+function launchDiscord(exe) {
+  try {
+    const child = spawn(exe, [`--remote-debugging-port=${PORT}`], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false
+    });
+    child.unref();
+    return true;
+  } catch (e) {
+    uiLog("[!] Failed to launch Discord: " + (e?.message || e));
+    return false;
+  }
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// One quick look at the debug port — is a usable Discord page already there?
+async function probeMainPage() {
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 2500);
+    const res = await fetch(`http://127.0.0.1:${PORT}/json`, { signal: ctl.signal });
+    clearTimeout(timer);
+    const targets = await res.json();
+    return targets.find((t) => t.type === "page" && t.webSocketDebuggerUrl && /discord\.com\/(app|channels)/.test(t.url)) || null;
+  } catch (_) { return null; }
+}
+
+// Waits for the Discord window to show up on the debug port.
+// Reports progress so the app doesn't look frozen while it waits.
 async function waitForMainPage(timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
+  let sawPort = false;
+  let lastNotice = 0;
+
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`http://127.0.0.1:${PORT}/json`);
       const targets = await res.json();
+      if (!sawPort) { sawPort = true; say("l_portup", "ok"); }
+
       const main = targets.find((t) => t.type === "page" && t.webSocketDebuggerUrl && /discord\.com\/(app|channels)/.test(t.url));
       if (main) return main;
-    } catch (_) {}
+
+      const loggedIn = targets.some((t) => t.type === "page" && /discord\.com/.test(t.url));
+      const waited = Math.round((Date.now() - (deadline - timeoutMs)) / 1000);
+      if (loggedIn && waited - lastNotice >= 15) {
+        lastNotice = waited;
+        say("l_waitlogin", "warn");
+      }
+    } catch (_) {
+      const waited = Math.round((Date.now() - (deadline - timeoutMs)) / 1000);
+      if (waited - lastNotice >= 10) {
+        lastNotice = waited;
+        say("l_waiting", "info", String(waited));
+      }
+    }
     await sleep(1500);
   }
   return null;
@@ -229,9 +346,19 @@ async function preflight() {
   if (settingsWritable()) say("chk_settings_ok", "ok");
   else { say("chk_settings_fail", "err"); fatal = true; }
 
-  const busy = await portInUse(PORT);
-  if (busy) say("chk_port_busy", "warn", String(PORT));
-  else say("chk_port_free", "ok", String(PORT));
+  // Being busy is only a problem when something other than Discord holds it.
+  const holder = pidOnPort(PORT);
+  if (!holder) {
+    say("chk_port_free", "ok", String(PORT));
+  } else {
+    const name = processName(holder);
+    if (/discord/i.test(name)) {
+      say("chk_port_busy", "warn", String(PORT));
+    } else {
+      say("chk_port_foreign", "err", String(PORT), name || String(holder));
+      fatal = true;
+    }
+  }
 
   const online = await canReachDiscord();
   if (online) say("chk_net_ok", "ok");
@@ -255,18 +382,53 @@ async function runFlow() {
       return;
     }
 
+    // If Discord is already up on the debug port, skip the restart entirely.
+    // Faster, and avoids the whole class of "it didn't come back up" failures.
+    const alive = await probeMainPage();
+    if (alive) {
+      say("l_already", "ok");
+      phase("connecting");
+      connect(alive);
+      return;
+    }
+
     phase("closing");
-    killDiscord();
-    await sleep(1500);
+
+    const portState = await freePort(PORT);
+    if (portState === "foreign") {
+      say("chk_port_foreign", "err", String(PORT));
+      phase("error");
+      state.running = false;
+      send("sniper:running", false);
+      return;
+    }
+    if (portState === "killed") say("l_portfreed", "ok", String(PORT));
+
+    say("l_closing", "info");
+    const closed = await killDiscordAndWait();
+    if (!closed) {
+      say("l_killfail", "err");
+      phase("error");
+      state.running = false;
+      send("sniper:running", false);
+      return;
+    }
+    say("l_closed", "ok");
     enableDevTools();
 
     phase("launching");
-    exec(`start "" "${exe}" --remote-debugging-port=${PORT}`);
+    say("l_launching", "info");
+    if (!launchDiscord(exe)) {
+      phase("error");
+      state.running = false;
+      send("sniper:running", false);
+      return;
+    }
 
     phase("waiting");
     const target = await waitForMainPage();
     if (!target) {
-      uiLog("[!] Main Discord window never appeared on the debug port.");
+      say("l_nowindow_help", "err");
       phase("error");
       state.running = false;
       send("sniper:running", false);
@@ -298,6 +460,33 @@ function stopFlow() {
 }
 
 ipcMain.handle("sniper:start", () => { runFlow(); });
+
+// Hard reset for when things are stuck: drop the connection, kill every Discord
+// process, free the debug port, then start over from scratch.
+ipcMain.handle("sniper:repair", async () => {
+  say("l_repair_start", "info");
+  stopFlow();
+
+  const port = await freePort(PORT);
+  if (port === "foreign") {
+    say("chk_port_foreign", "err", String(PORT));
+    phase("error");
+    return false;
+  }
+  if (port === "killed") say("l_portfreed", "ok", String(PORT));
+
+  const closed = await killDiscordAndWait(20000);
+  if (!closed) {
+    say("l_killfail", "err");
+    phase("error");
+    return false;
+  }
+
+  say("l_repair_done", "ok");
+  await sleep(800);
+  runFlow();
+  return true;
+});
 ipcMain.handle("sniper:stop", () => { stopFlow(); return true; });
 ipcMain.handle("sniper:skip", () => { evalInPage("window.__QUEST_SKIP__ = true"); });
 ipcMain.handle("donate:copy", () => { clipboard.writeText(DONATE_ADDRESS); return true; });

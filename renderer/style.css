@@ -587,3 +587,16 @@ footer {
   .finish-card { animation: rotate-border 18s linear infinite !important; }
   .fm-tick { animation: draw-tick 500ms var(--ease) 220ms forwards !important; }
 }
+
+/* repair: only shows up when something went wrong */
+.btn.repair {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: repair-in 260ms var(--ease);
+}
+.btn.repair:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+@keyframes repair-in { from { opacity: 0; transform: translateY(-4px); } }

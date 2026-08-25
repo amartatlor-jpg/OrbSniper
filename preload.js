@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("sniper", {
   start: () => ipcRenderer.invoke("sniper:start"),
   stop: () => ipcRenderer.invoke("sniper:stop"),
+  repair: () => ipcRenderer.invoke("sniper:repair"),
   skip: () => ipcRenderer.invoke("sniper:skip"),
   copyText: (text) => ipcRenderer.invoke("app:copy", text),
   openExternal: (url) => ipcRenderer.invoke("app:open", url),
