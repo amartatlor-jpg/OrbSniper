@@ -74,6 +74,23 @@ function closeLangMenu() {
 // ---------- log messages ----------
 // raw engine output -> readable text in the current language
 const RULES = [
+  // engine chatter the progress bar already shows — dropped entirely
+  [/"(.+?)"\s+game:\s*\d+\/\d+s/i,          null,          "skip"],
+  [/"(.+?)"\s+video:\s*\d+\/\d+/i,          null,          "skip"],
+
+  // must sit above the heartbeat filter: this line mentions heartbeats too
+  [/Game quest "(.+?)"\s*[—-]\s*play "(.+?)"/i, "l_playing",   "info"],
+  [/heartbeat|progress ping/i,                 null,          "skip"],
+
+  [/"(.+?)"\s*[—-]\s*console\/achievement only/i, "l_unsupported", "warn"],
+  [/Claiming reward for "(.+?)"/i,            "l_claiming",  "info"],
+  [/Reward claimed:\s*"(.+?)"/i,              "l_claimed",   "ok"],
+  [/Claim blocked for "(.+?)"\s*\((.+?)\)/i,  "l_claimblocked", "warn"],
+  [/Claim failed for "(.+?)"\s*\((.+?)\)/i,   "l_claimgiveup",  "err"],
+  [/Claim error for "(.+?)"\s*\((.+?)\)/i,    "l_claimretry",   "warn"],
+  [/Accepted:\s*"(.+?)"/i,                    "l_accepted",  "ok"],
+  [/"(.+?)"\s*[—-]\s*accepting/i,             "l_accepting", "info"],
+  [/Watcher already running/i,                "l_dup",       "warn"],
   [/Discord\.exe not found/i,                 "l_nodiscord", "err"],
   [/Main Discord window never appeared/i,     "l_nowindow",  "err"],
   [/Webpack never became ready/i,             "l_notready",  "err"],
@@ -102,8 +119,8 @@ function humanize(raw) {
   for (const [re, key, level] of RULES) {
     const m = s.match(re);
     if (m) {
-      const arg = m[1] || m[2] || "";
-      return { text: t(key, arg), level };
+      if (level === "skip") return null;
+      return { text: t(key, m[1] || "", m[2] || ""), level };
     }
   }
   // unknown line: show as-is, guess the level from markers
@@ -223,8 +240,9 @@ function pushLine(text, level) {
 
 function addLog(raw) {
   if (!raw) return;
-  const { text, level } = humanize(raw);
-  if (!text) return;
+  const line = humanize(raw);
+  if (!line || !line.text) return;
+  const { text, level } = line;
   pushLine(text, level);
   if (level === "ok" && /claim|заб|получ|награ|reward|领取|resgat|obten/i.test(text)) {
     claimed++;

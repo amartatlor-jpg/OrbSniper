@@ -23,6 +23,9 @@ const state = {
   ws: null,
   msgId: 0,
   readinessIds: new Set(),
+  statusIds: new Set(),
+  tallyIds: new Set(),
+  doneIds: new Set(),
   injected: false,
   poll: null
 };
@@ -216,6 +219,9 @@ function connect(target) {
   state.ws = ws;
   state.msgId = 0;
   state.readinessIds.clear();
+  state.statusIds.clear();
+  state.tallyIds.clear();
+  state.doneIds.clear();
   state.injected = false;
 
   ws.on("open", () => {
@@ -250,9 +256,10 @@ function connect(target) {
 
         state.poll = setInterval(() => {
           if (ws.readyState !== WebSocket.OPEN) return;
-          evalInPage("window.__QUEST_STATUS__ || ''");
-          evalInPage("window.__QUEST_TALLY__ || ''");
-          evalInPage("window.__QUEST_AUTO_DONE__ === true");
+          // Tag every request so the reply can't be mistaken for another one.
+          state.statusIds.add(evalInPage("window.__QUEST_STATUS__ || ''"));
+          state.tallyIds.add(evalInPage("window.__QUEST_TALLY__ || ''"));
+          state.doneIds.add(evalInPage("window.__QUEST_AUTO_DONE__ === true"));
         }, 3000);
       }
       return;
@@ -284,19 +291,31 @@ function connect(target) {
   const handler = (data) => {
     let msg;
     try { msg = JSON.parse(data.toString()); } catch (_) { return; }
-    if (!msg.id || !msg.result || state.readinessIds.has(msg.id)) return;
+    if (!msg.id || !msg.result) return;
     const val = msg.result.result?.value;
-    if (typeof val === "string" && val.startsWith("{")) {
-      if (val !== lastTally) { lastTally = val; try { send("sniper:tally", JSON.parse(val)); } catch (_) {} }
+
+    if (state.tallyIds.delete(msg.id)) {
+      if (typeof val === "string" && val.startsWith("{") && val !== lastTally) {
+        lastTally = val;
+        try { send("sniper:tally", JSON.parse(val)); } catch (_) {}
+      }
       return;
     }
-    if (typeof val === "string" && val && val !== lastStatus) {
-      lastStatus = val;
-      send("sniper:status", val);
+
+    if (state.statusIds.delete(msg.id)) {
+      if (typeof val === "string" && val && val !== lastStatus) {
+        lastStatus = val;
+        send("sniper:status", val);
+      }
+      return;
     }
-    if (val === true) {
-      send("sniper:done", true);
-      if (state.poll) { clearInterval(state.poll); state.poll = null; }
+
+    if (state.doneIds.delete(msg.id)) {
+      if (val === true) {
+        send("sniper:done", true);
+        if (state.poll) { clearInterval(state.poll); state.poll = null; }
+      }
+      return;
     }
   };
   ws.on("message", handler);
@@ -455,6 +474,9 @@ function stopFlow() {
   }
   state.injected = false;
   state.readinessIds.clear();
+  state.statusIds.clear();
+  state.tallyIds.clear();
+  state.doneIds.clear();
   state.running = false;
   send("sniper:running", false);
 }

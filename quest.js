@@ -13,6 +13,14 @@
   const log = (m) => console.log(`[quest-auto] ${m}`);
   const err = (m) => console.error(`[quest-auto] ${m}`);
 
+  // Guard against a second injection: two watchers would fight over the same
+  // quests, double every log line and run two timers side by side.
+  if (window.__QUEST_WATCHER__) {
+    log("Watcher already running in this client, ignoring the second injection.");
+    return;
+  }
+  window.__QUEST_WATCHER__ = true;
+
   window.__QUEST_SKIP__ = false;
   window.__QUEST_STOP__ = false;
   window.__QUEST_STATUS__ = "starting";
@@ -23,6 +31,7 @@
   const STALL_TIMEOUT_MS = 3 * 60 * 1000;   // auto-skip quest with no progress for 3 min
   const SCAN_INTERVAL_MS = 20 * 1000;       // scan cycle
   const ENROLL_COOLDOWN_MS = 3 * 60 * 1000; // wait before re-trying a failed accept
+  const CLAIM_COOLDOWN_MS = 5 * 60 * 1000;  // wait before re-trying a failed claim
 
   try {
     delete window.$;
@@ -80,21 +89,61 @@
       }
     }
 
+    // Discord answers with objects, not Error instances — describe() digs the
+    // useful part out instead of printing [object Object].
+    function describe(e) {
+      if (!e) return "unknown";
+      if (typeof e === "string") return e;
+      if (e.message) return e.message;
+      const status = e.status ?? e.statusCode;
+      const body = e.body ?? e.response?.body;
+      const detail =
+        body?.message ||
+        body?.errors?.[0]?.message ||
+        (body && typeof body === "object" ? JSON.stringify(body).slice(0, 160) : body);
+      if (status && detail) return `HTTP ${status}: ${detail}`;
+      if (status) return `HTTP ${status}`;
+      if (detail) return String(detail);
+      try { return JSON.stringify(e).slice(0, 160); } catch (_) { return String(e); }
+    }
+
+    // Some claims need a captcha and will never go through unattended.
+    // Give up after a few tries instead of retrying the same quest forever.
+    const claimTries = new Map();
+    const MAX_CLAIM_TRIES = 3;
+
     async function claimReward(quest) {
+      const name = quest.config.messages.questName;
+      const tries = claimTries.get(quest.id) ?? 0;
+
+      if (tries >= MAX_CLAIM_TRIES) {
+        manualClaim.add(quest.id);
+        return false;
+      }
+      claimTries.set(quest.id, tries + 1);
+
       try {
-        log(`Claiming reward for "${quest.config.messages.questName}"...`);
+        log(`Claiming reward for "${name}"...`);
         const res = await api.post({ url: `/quests/${quest.id}/claim-reward`, body: { location: LOC_QUEST_HOME, platform: PLATFORM_PC } });
         const errs = res.body?.errors;
         if (res.status === 200 && (!errs || errs.length === 0)) {
-          log(`Reward claimed: "${quest.config.messages.questName}".`);
+          claimTries.delete(quest.id);
+          manualClaim.delete(quest.id);
+          log(`Reward claimed: "${name}".`);
           return true;
         }
         manualClaim.add(quest.id);
-        log(`Claim blocked for "${quest.config.messages.questName}" (status ${res.status}) — claim manually in the Quests tab.`);
+        const why = errs?.[0]?.message || res.body?.message || `status ${res.status}`;
+        log(`Claim blocked for "${name}" (${why}) — claim manually in the Quests tab.`);
         return false;
       } catch (e) {
         manualClaim.add(quest.id);
-        log(`Claim error for "${quest.config.messages.questName}": ${e?.message || e} — claim manually.`);
+        const why = describe(e);
+        if (tries + 1 >= MAX_CLAIM_TRIES) {
+          log(`Claim failed for "${name}" (${why}) — giving up, claim it manually in the Quests tab.`);
+        } else {
+          log(`Claim error for "${name}" (${why}) — will retry.`);
+        }
         return false;
       }
     }
@@ -298,9 +347,13 @@
         if (q.userStatus?.completedAt) {
           if (!q.userStatus.claimedAt) {
             const failedAt = claimFailedAt.get(q.id) ?? 0;
-            if (now - failedAt < ENROLL_COOLDOWN_MS) continue;
+            if (now - failedAt < CLAIM_COOLDOWN_MS) continue;
             if (await claimReward(q)) processed.add(q.id);
-            else claimFailedAt.set(q.id, Date.now());
+            else {
+              claimFailedAt.set(q.id, Date.now());
+              // Out of attempts: stop touching it, the user has to do it by hand.
+              if (manualClaim.has(q.id)) processed.add(q.id);
+            }
           } else {
             processed.add(q.id);
           }
@@ -366,8 +419,10 @@
       await sleep(SCAN_INTERVAL_MS);
     }
     log("Watcher stopped.");
+    window.__QUEST_WATCHER__ = false;
   } catch (e) {
     err(`Fatal: ${e?.stack || e}`);
+    window.__QUEST_WATCHER__ = false;
     window.__QUEST_AUTO_DONE__ = true;
   }
 })();

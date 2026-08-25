@@ -18,6 +18,14 @@ const LANGS = [
 
 const I18N = {
   ru: {
+    l_claiming: "Забираю награду за «{0}»…",
+    l_claimblocked: "Награду за «{0}» не отдали: {1}. Забери вручную во вкладке «Квесты».",
+    l_claimretry: "Не получилось забрать награду за «{0}»: {1}. Попробую позже.",
+    l_claimgiveup: "Награду за «{0}» забрать не выходит: {1}. Забери её вручную в Discord.",
+    l_accepting: "Принимаю квест «{0}»…",
+    l_playing: "Квест «{0}»: изображаю игру «{1}».",
+    l_dup: "Логика уже работает в этом Discord — второй запуск не нужен.",
+    l_unsupported: "Квест «{0}» так не сделать — его нужно проходить руками. Пропускаю.",
     l_already: "Discord уже открыт с отладочным портом — перезапуск не нужен.",
     btn_repair: "Починить и перезапустить",
     st_repair: "Чиню",
@@ -135,6 +143,14 @@ const I18N = {
   },
 
   en: {
+    l_claiming: "Claiming the reward for “{0}”…",
+    l_claimblocked: "Reward for “{0}” was refused: {1}. Claim it by hand in the Quests tab.",
+    l_claimretry: "Couldn't claim the reward for “{0}”: {1}. Will try again later.",
+    l_claimgiveup: "Can't claim the reward for “{0}”: {1}. Claim it yourself in Discord.",
+    l_accepting: "Accepting quest “{0}”…",
+    l_playing: "Quest “{0}”: pretending to play “{1}”.",
+    l_dup: "The logic is already running in this Discord — no second start needed.",
+    l_unsupported: "Quest “{0}” can't be done this way — it needs real play. Skipping.",
     l_already: "Discord is already up with the debug port — no restart needed.",
     btn_repair: "Fix and restart",
     st_repair: "Fixing",
@@ -252,6 +268,14 @@ const I18N = {
   },
 
   zh: {
+    l_claiming: "正在领取「{0}」的奖励…",
+    l_claimblocked: "「{0}」的奖励被拒绝：{1}。请在「任务」标签页手动领取。",
+    l_claimretry: "未能领取「{0}」的奖励：{1}。稍后重试。",
+    l_claimgiveup: "无法领取「{0}」的奖励：{1}。请在 Discord 中自行领取。",
+    l_accepting: "正在接受任务「{0}」…",
+    l_playing: "任务「{0}」：正在模拟游玩「{1}」。",
+    l_dup: "该 Discord 中逻辑已在运行 — 无需再次启动。",
+    l_unsupported: "任务「{0}」无法自动完成 — 需要真实游玩。已跳过。",
     l_already: "Discord 已带调试端口运行 — 无需重启。",
     btn_repair: "修复并重启",
     st_repair: "修复中",
@@ -369,6 +393,14 @@ const I18N = {
   },
 
   es: {
+    l_claiming: "Reclamando la recompensa de «{0}»…",
+    l_claimblocked: "La recompensa de «{0}» fue rechazada: {1}. Recláma­la a mano en la pestaña Misiones.",
+    l_claimretry: "No se pudo reclamar la recompensa de «{0}»: {1}. Lo intentaré más tarde.",
+    l_claimgiveup: "No se puede reclamar la recompensa de «{0}»: {1}. Recláma­la tú en Discord.",
+    l_accepting: "Aceptando la misión «{0}»…",
+    l_playing: "Misión «{0}»: simulando jugar a «{1}».",
+    l_dup: "La lógica ya se está ejecutando en este Discord: no hace falta arrancarla otra vez.",
+    l_unsupported: "La misión «{0}» no se puede hacer así: requiere juego real. La omito.",
     l_already: "Discord ya está abierto con el puerto de depuración: no hace falta reiniciar.",
     btn_repair: "Reparar y reiniciar",
     st_repair: "Reparando",
@@ -486,6 +518,14 @@ const I18N = {
   },
 
   pt: {
+    l_claiming: "Resgatando a recompensa de «{0}»…",
+    l_claimblocked: "A recompensa de «{0}» foi recusada: {1}. Resgate à mão na aba Missões.",
+    l_claimretry: "Não deu para resgatar a recompensa de «{0}»: {1}. Tentarei depois.",
+    l_claimgiveup: "Não consigo resgatar a recompensa de «{0}»: {1}. Resgate você mesmo no Discord.",
+    l_accepting: "Aceitando a missão «{0}»…",
+    l_playing: "Missão «{0}»: fingindo jogar «{1}».",
+    l_dup: "A lógica já está rodando neste Discord — não precisa iniciar de novo.",
+    l_unsupported: "A missão «{0}» não dá para fazer assim — exige jogo real. Pulando.",
     l_already: "O Discord já está aberto com a porta de depuração — não precisa reiniciar.",
     btn_repair: "Corrigir e reiniciar",
     st_repair: "Corrigindo",
@@ -603,6 +643,14 @@ const I18N = {
   },
 
   de: {
+    l_claiming: "Hole die Belohnung für „{0}“…",
+    l_claimblocked: "Belohnung für „{0}“ wurde abgelehnt: {1}. Hol sie im Quests-Tab von Hand ab.",
+    l_claimretry: "Belohnung für „{0}“ ließ sich nicht abholen: {1}. Versuche es später erneut.",
+    l_claimgiveup: "Belohnung für „{0}“ lässt sich nicht abholen: {1}. Hol sie selbst in Discord ab.",
+    l_accepting: "Nehme Quest „{0}“ an…",
+    l_playing: "Quest „{0}“: tue so, als liefe „{1}“.",
+    l_dup: "Die Logik läuft in diesem Discord bereits — kein zweiter Start nötig.",
+    l_unsupported: "Quest „{0}“ geht so nicht — sie braucht echtes Spielen. Überspringe.",
     l_already: "Discord läuft bereits mit Debug-Port — kein Neustart nötig.",
     btn_repair: "Reparieren und neu starten",
     st_repair: "Repariere",
@@ -720,6 +768,14 @@ const I18N = {
   },
 
   fr: {
+    l_claiming: "Récupération de la récompense de « {0} »…",
+    l_claimblocked: "Récompense de « {0} » refusée : {1}. Récupère-la à la main dans l'onglet Quêtes.",
+    l_claimretry: "Impossible de récupérer la récompense de « {0} » : {1}. Je réessaierai plus tard.",
+    l_claimgiveup: "Impossible de récupérer la récompense de « {0} » : {1}. Récupère-la toi-même dans Discord.",
+    l_accepting: "Acceptation de la quête « {0} »…",
+    l_playing: "Quête « {0} » : je simule « {1} ».",
+    l_dup: "La logique tourne déjà dans ce Discord — pas besoin de relancer.",
+    l_unsupported: "La quête « {0} » ne peut pas se faire ainsi — elle demande de vraiment jouer. Je passe.",
     l_already: "Discord est déjà lancé avec le port de débogage — pas besoin de le relancer.",
     btn_repair: "Réparer et relancer",
     st_repair: "Réparation",
@@ -837,6 +893,14 @@ const I18N = {
   },
 
   pl: {
+    l_claiming: "Odbieram nagrodę za «{0}»…",
+    l_claimblocked: "Nagroda za «{0}» odrzucona: {1}. Odbierz ją ręcznie w zakładce Questy.",
+    l_claimretry: "Nie udało się odebrać nagrody za «{0}»: {1}. Spróbuję później.",
+    l_claimgiveup: "Nie da się odebrać nagrody za «{0}»: {1}. Odbierz ją sam w Discordzie.",
+    l_accepting: "Przyjmuję questa «{0}»…",
+    l_playing: "Quest «{0}»: udaję grę w «{1}».",
+    l_dup: "Logika już działa w tym Discordzie — drugi start niepotrzebny.",
+    l_unsupported: "Questa «{0}» tak się nie da zrobić — wymaga prawdziwej gry. Pomijam.",
     l_already: "Discord już działa z portem debugowania — restart niepotrzebny.",
     btn_repair: "Napraw i uruchom ponownie",
     st_repair: "Naprawiam",
@@ -954,6 +1018,14 @@ const I18N = {
   },
 
   tr: {
+    l_claiming: "«{0}» ödülü alınıyor…",
+    l_claimblocked: "«{0}» ödülü reddedildi: {1}. Görevler sekmesinden elle al.",
+    l_claimretry: "«{0}» ödülü alınamadı: {1}. Sonra tekrar denerim.",
+    l_claimgiveup: "«{0}» ödülü alınamıyor: {1}. Discord'dan kendin al.",
+    l_accepting: "«{0}» görevi kabul ediliyor…",
+    l_playing: "«{0}» görevi: «{1}» oynuyormuş gibi yapılıyor.",
+    l_dup: "Mantık bu Discord'da zaten çalışıyor — ikinci başlatmaya gerek yok.",
+    l_unsupported: "«{0}» görevi böyle yapılamaz — gerçek oyun gerekiyor. Atlanıyor.",
     l_already: "Discord zaten hata ayıklama portuyla açık — yeniden başlatmaya gerek yok.",
     btn_repair: "Onar ve yeniden başlat",
     st_repair: "Onarılıyor",
@@ -1071,6 +1143,14 @@ const I18N = {
   },
 
   uk: {
+    l_claiming: "Забираю нагороду за «{0}»…",
+    l_claimblocked: "Нагороду за «{0}» не віддали: {1}. Забери вручну у вкладці «Квести».",
+    l_claimretry: "Не вийшло забрати нагороду за «{0}»: {1}. Спробую пізніше.",
+    l_claimgiveup: "Нагороду за «{0}» забрати не вдається: {1}. Забери її вручну в Discord.",
+    l_accepting: "Приймаю квест «{0}»…",
+    l_playing: "Квест «{0}»: вдаю гру «{1}».",
+    l_dup: "Логіка вже працює в цьому Discord — другий запуск не потрібен.",
+    l_unsupported: "Квест «{0}» так не зробити — потрібна справжня гра. Пропускаю.",
     l_already: "Discord уже відкритий з відлагоджувальним портом — перезапуск не потрібен.",
     btn_repair: "Полагодити й перезапустити",
     st_repair: "Лагоджу",
