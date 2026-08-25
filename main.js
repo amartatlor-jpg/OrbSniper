@@ -1,5 +1,5 @@
 /*!
- * OrbSniper v1.5.1 - Discord Orb farmer (GUI)
+ * OrbSniper v1.5.0 - Discord Orb farmer (GUI)
  * Copyright (c) 2026 synaps_ss - tg: @synaps_ss
  * Licensed under MIT. Use at your own risk. Violates Discord ToS.
  */
@@ -14,7 +14,7 @@ const os = require("os");
 const net = require("net");
 const WebSocket = require("ws");
 
-const VERSION = "1.5.1";
+const VERSION = "1.5.0";
 const PORT = 9222;
 
 let win = null;
