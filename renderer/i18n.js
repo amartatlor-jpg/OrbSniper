@@ -18,6 +18,9 @@ const LANGS = [
 
 const I18N = {
   ru: {
+    chk_elevated: "Запущено от имени администратора.",
+    l_killdenied: "Discord не закрывается: у него больше прав, чем у OrbSniper. Закрой OrbSniper, нажми на нём правой кнопкой и выбери «Запуск от имени администратора».",
+    l_manualcmd: "Можно запустить Discord вручную: закрой его полностью, нажми Win+R, вставь эту строку и Enter — {0}",
     l_injecting: "Впрыскиваю логику квестов…",
     l_injected_ok: "Логика запустилась и работает.",
     l_injectfail: "Логика не выполнилась: {0}. Нажми «Починить и перезапустить».",
@@ -147,6 +150,9 @@ const I18N = {
   },
 
   en: {
+    chk_elevated: "Running as administrator.",
+    l_killdenied: "Discord won't close: it has more rights than OrbSniper. Close OrbSniper, right-click it and choose Run as administrator.",
+    l_manualcmd: "You can start Discord by hand: close it fully, press Win+R, paste this line and hit Enter — {0}",
     l_injecting: "Injecting the quest logic…",
     l_injected_ok: "The logic started and is running.",
     l_injectfail: "The logic didn't execute: {0}. Press Fix and restart.",
@@ -276,6 +282,9 @@ const I18N = {
   },
 
   zh: {
+    chk_elevated: "正在以管理员身份运行。",
+    l_killdenied: "无法关闭 Discord：它的权限高于 OrbSniper。请关闭 OrbSniper，右键点击并选择「以管理员身份运行」。",
+    l_manualcmd: "也可以手动启动 Discord：完全关闭它，按 Win+R，粘贴这一行并回车 — {0}",
     l_injecting: "正在注入任务逻辑…",
     l_injected_ok: "逻辑已启动并运行中。",
     l_injectfail: "逻辑未能执行：{0}。请点击「修复并重启」。",
@@ -405,6 +414,9 @@ const I18N = {
   },
 
   es: {
+    chk_elevated: "Ejecutándose como administrador.",
+    l_killdenied: "Discord no se cierra: tiene más permisos que OrbSniper. Cierra OrbSniper, haz clic derecho y elige Ejecutar como administrador.",
+    l_manualcmd: "Puedes abrir Discord a mano: ciérralo del todo, pulsa Win+R, pega esta línea y Enter — {0}",
     l_injecting: "Inyectando la lógica de misiones…",
     l_injected_ok: "La lógica arrancó y está funcionando.",
     l_injectfail: "La lógica no se ejecutó: {0}. Pulsa Reparar y reiniciar.",
@@ -534,6 +546,9 @@ const I18N = {
   },
 
   pt: {
+    chk_elevated: "Executando como administrador.",
+    l_killdenied: "O Discord não fecha: ele tem mais permissões que o OrbSniper. Feche o OrbSniper, clique com o botão direito e escolha Executar como administrador.",
+    l_manualcmd: "Dá para abrir o Discord à mão: feche-o por completo, aperte Win+R, cole esta linha e Enter — {0}",
     l_injecting: "Injetando a lógica das missões…",
     l_injected_ok: "A lógica iniciou e está rodando.",
     l_injectfail: "A lógica não executou: {0}. Clique em Corrigir e reiniciar.",
@@ -663,6 +678,9 @@ const I18N = {
   },
 
   de: {
+    chk_elevated: "Läuft als Administrator.",
+    l_killdenied: "Discord lässt sich nicht schließen: es hat mehr Rechte als OrbSniper. Schließe OrbSniper, Rechtsklick darauf und „Als Administrator ausführen“ wählen.",
+    l_manualcmd: "Discord geht auch von Hand: ganz schließen, Win+R drücken, diese Zeile einfügen und Enter — {0}",
     l_injecting: "Injiziere die Quest-Logik…",
     l_injected_ok: "Die Logik ist gestartet und läuft.",
     l_injectfail: "Die Logik lief nicht an: {0}. Drück Reparieren und neu starten.",
@@ -792,6 +810,9 @@ const I18N = {
   },
 
   fr: {
+    chk_elevated: "Lancé en administrateur.",
+    l_killdenied: "Discord refuse de se fermer : il a plus de droits qu'OrbSniper. Ferme OrbSniper, clic droit dessus et choisis Exécuter en tant qu'administrateur.",
+    l_manualcmd: "Tu peux lancer Discord à la main : ferme-le complètement, fais Win+R, colle cette ligne et Entrée — {0}",
     l_injecting: "Injection de la logique des quêtes…",
     l_injected_ok: "La logique a démarré et tourne.",
     l_injectfail: "La logique ne s'est pas exécutée : {0}. Clique sur Réparer et relancer.",
@@ -921,6 +942,9 @@ const I18N = {
   },
 
   pl: {
+    chk_elevated: "Uruchomiono jako administrator.",
+    l_killdenied: "Discord się nie zamyka: ma wyższe uprawnienia niż OrbSniper. Zamknij OrbSniper, kliknij prawym i wybierz Uruchom jako administrator.",
+    l_manualcmd: "Discorda można uruchomić ręcznie: zamknij go całkiem, naciśnij Win+R, wklej tę linię i Enter — {0}",
     l_injecting: "Wstrzykuję logikę questów…",
     l_injected_ok: "Logika wystartowała i działa.",
     l_injectfail: "Logika się nie wykonała: {0}. Kliknij Napraw i uruchom ponownie.",
@@ -1050,6 +1074,9 @@ const I18N = {
   },
 
   tr: {
+    chk_elevated: "Yönetici olarak çalışıyor.",
+    l_killdenied: "Discord kapanmıyor: OrbSniper'dan daha yüksek yetkisi var. OrbSniper'ı kapat, sağ tıkla ve Yönetici olarak çalıştır'ı seç.",
+    l_manualcmd: "Discord'u elle başlatabilirsin: tamamen kapat, Win+R yap, bu satırı yapıştır ve Enter — {0}",
     l_injecting: "Görev mantığı enjekte ediliyor…",
     l_injected_ok: "Mantık başladı ve çalışıyor.",
     l_injectfail: "Mantık çalıştırılamadı: {0}. Onar ve yeniden başlat'a bas.",
@@ -1179,6 +1206,9 @@ const I18N = {
   },
 
   uk: {
+    chk_elevated: "Запущено від імені адміністратора.",
+    l_killdenied: "Discord не закривається: у нього більше прав, ніж у OrbSniper. Закрий OrbSniper, натисни на ньому правою кнопкою і обери «Запуск від імені адміністратора».",
+    l_manualcmd: "Можна запустити Discord вручну: закрий його повністю, натисни Win+R, встав цей рядок і Enter — {0}",
     l_injecting: "Впорскую логіку квестів…",
     l_injected_ok: "Логіка запустилася й працює.",
     l_injectfail: "Логіка не виконалася: {0}. Натисни «Полагодити й перезапустити».",

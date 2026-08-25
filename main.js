@@ -83,8 +83,31 @@ function discordPids() {
   } catch (_) { return []; }
 }
 
+// Are we running elevated? High Mandatory Level means "as administrator".
+function isElevated() {
+  try {
+    const whoami = path.join(process.env.SystemRoot || "C:\Windows", "System32", "whoami.exe");
+    const out = execSync(`"${whoami}" /groups`, { encoding: "utf8" });
+    return out.includes("S-1-16-12288");
+  } catch (_) { return false; }
+}
+
+// Returns { ok, denied }. Access denied means Discord runs with higher rights
+// than we do — the usual reason a kill silently does nothing.
 function killDiscord() {
-  try { execSync("taskkill /F /IM Discord.exe /T", { stdio: "ignore" }); } catch (_) {}
+  try {
+    execSync("taskkill /F /IM Discord.exe /T", { stdio: "pipe" });
+    return { ok: true, denied: false };
+  } catch (e) {
+    const text = String(e.stdout || "") + String(e.stderr || "") + String(e.message || "");
+    const denied = /access is denied|Отказано в доступе|отказано/i.test(text);
+    return { ok: false, denied };
+  }
+}
+
+// The command a user can paste into cmd to start Discord with the port by hand.
+function manualCommand(exe) {
+  return `"${exe}" --remote-debugging-port=${PORT}`;
 }
 
 // Kills Discord and waits until the processes are actually gone.
@@ -93,21 +116,28 @@ function killDiscord() {
 async function killDiscordAndWait(timeoutMs = 15000) {
   const started = Date.now();
   let attempt = 0;
+  let sawDenied = false;
 
   while (Date.now() - started < timeoutMs) {
     const pids = discordPids();
-    if (pids.length === 0) return true;
+    if (pids.length === 0) return { ok: true, denied: false };
 
     attempt++;
-    killDiscord();
+    const res = killDiscord();
+    if (res.denied) sawDenied = true;
+
     if (attempt > 2) {
       for (const pid of pids) {
-        try { execSync(`taskkill /F /PID ${pid} /T`, { stdio: "ignore" }); } catch (_) {}
+        try { execSync(`taskkill /F /PID ${pid} /T`, { stdio: "pipe" }); }
+        catch (e) {
+          const text = String(e.stdout || "") + String(e.stderr || "") + String(e.message || "");
+          if (/access is denied|Отказано в доступе|отказано/i.test(text)) sawDenied = true;
+        }
       }
     }
     await sleep(700);
   }
-  return discordPids().length === 0;
+  return { ok: discordPids().length === 0, denied: sawDenied };
 }
 
 // Returns the PID holding the port, or 0.
@@ -402,6 +432,7 @@ async function preflight() {
   if (exe) say("chk_discord_ok", "ok", exe);
   else { say("chk_discord_missing", "err"); fatal = true; }
 
+  if (isElevated()) say("chk_elevated", "ok");
   if (settingsWritable()) say("chk_settings_ok", "ok");
   else { say("chk_settings_fail", "err"); fatal = true; }
 
@@ -465,8 +496,10 @@ async function runFlow() {
 
     say("l_closing", "info");
     const closed = await killDiscordAndWait();
-    if (!closed) {
-      say("l_killfail", "err");
+    if (!closed.ok) {
+      if (closed.denied && !isElevated()) say("l_killdenied", "err");
+      else say("l_killfail", "err");
+      say("l_manualcmd", "warn", manualCommand(exe));
       phase("error");
       state.running = false;
       send("sniper:running", false);
@@ -488,6 +521,7 @@ async function runFlow() {
     const target = await waitForMainPage();
     if (!target) {
       say("l_nowindow_help", "err");
+      say("l_manualcmd", "warn", manualCommand(exe));
       phase("error");
       state.running = false;
       send("sniper:running", false);
@@ -541,8 +575,11 @@ ipcMain.handle("sniper:repair", async () => {
   if (port === "killed") say("l_portfreed", "ok", String(PORT));
 
   const closed = await killDiscordAndWait(20000);
-  if (!closed) {
-    say("l_killfail", "err");
+  if (!closed.ok) {
+    if (closed.denied && !isElevated()) say("l_killdenied", "err");
+    else say("l_killfail", "err");
+    const exe = findDiscordExe();
+    if (exe) say("l_manualcmd", "warn", manualCommand(exe));
     phase("error");
     return false;
   }
