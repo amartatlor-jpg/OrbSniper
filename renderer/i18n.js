@@ -18,6 +18,10 @@ const LANGS = [
 
 const I18N = {
   ru: {
+    l_injecting: "Впрыскиваю логику квестов…",
+    l_injected_ok: "Логика запустилась и работает.",
+    l_injectfail: "Логика не выполнилась: {0}. Нажми «Починить и перезапустить».",
+    l_injectdead: "Логика впрыснута, но не запустилась. Обычно это старая версия Discord или включённый в нём режим разработчика. Нажми «Починить и перезапустить».",
     l_claiming: "Забираю награду за «{0}»…",
     l_claimblocked: "Награду за «{0}» не отдали: {1}. Забери вручную во вкладке «Квесты».",
     l_claimretry: "Не получилось забрать награду за «{0}»: {1}. Попробую позже.",
@@ -37,7 +41,7 @@ const I18N = {
     l_killfail: "Не удалось закрыть Discord. Закрой его вручную через диспетчер задач или перезагрузи компьютер.",
     l_launching: "Запускаю Discord с отладочным портом…",
     l_portfreed: "Порт {0} освобождён.",
-    l_portup: "Отладочный порт откликнулся.",
+    l_portup: "Отладочный порт откликнулся, окон Discord: {0}.",
     l_waiting: "Жду окно Discord… {0} сек.",
     l_waitlogin: "Discord открылся, но окно чата ещё не готово. Если висит экран входа — войди в аккаунт.",
     l_nowindow_help: "Discord так и не открылся с отладочным портом. Нажми «Починить и перезапустить» — закрою всё намертво и попробую заново.",
@@ -143,6 +147,10 @@ const I18N = {
   },
 
   en: {
+    l_injecting: "Injecting the quest logic…",
+    l_injected_ok: "The logic started and is running.",
+    l_injectfail: "The logic didn't execute: {0}. Press Fix and restart.",
+    l_injectdead: "The logic was injected but never started. Usually an outdated Discord or its developer mode being on. Press Fix and restart.",
     l_claiming: "Claiming the reward for “{0}”…",
     l_claimblocked: "Reward for “{0}” was refused: {1}. Claim it by hand in the Quests tab.",
     l_claimretry: "Couldn't claim the reward for “{0}”: {1}. Will try again later.",
@@ -162,7 +170,7 @@ const I18N = {
     l_killfail: "Couldn't close Discord. Close it by hand in Task Manager, or reboot.",
     l_launching: "Launching Discord with the debug port…",
     l_portfreed: "Port {0} freed.",
-    l_portup: "Debug port answered.",
+    l_portup: "Debug port answered, Discord windows: {0}.",
     l_waiting: "Waiting for the Discord window… {0}s.",
     l_waitlogin: "Discord opened but the chat window isn't ready. If you're on the login screen, sign in.",
     l_nowindow_help: "Discord never came up on the debug port. Press Fix and restart — everything gets force-closed and retried.",
@@ -268,6 +276,10 @@ const I18N = {
   },
 
   zh: {
+    l_injecting: "正在注入任务逻辑…",
+    l_injected_ok: "逻辑已启动并运行中。",
+    l_injectfail: "逻辑未能执行：{0}。请点击「修复并重启」。",
+    l_injectdead: "逻辑已注入但未启动。通常是 Discord 版本过旧或开启了开发者模式。请点击「修复并重启」。",
     l_claiming: "正在领取「{0}」的奖励…",
     l_claimblocked: "「{0}」的奖励被拒绝：{1}。请在「任务」标签页手动领取。",
     l_claimretry: "未能领取「{0}」的奖励：{1}。稍后重试。",
@@ -287,7 +299,7 @@ const I18N = {
     l_killfail: "无法关闭 Discord。请在任务管理器中手动关闭，或重启电脑。",
     l_launching: "正在带调试端口启动 Discord…",
     l_portfreed: "端口 {0} 已释放。",
-    l_portup: "调试端口已响应。",
+    l_portup: "调试端口已响应，Discord 窗口数：{0}。",
     l_waiting: "等待 Discord 窗口… {0} 秒。",
     l_waitlogin: "Discord 已打开但聊天窗口尚未就绪。如果停在登录界面，请先登录。",
     l_nowindow_help: "Discord 始终没有在调试端口出现。点击「修复并重启」— 将强制关闭并重试。",
@@ -393,6 +405,10 @@ const I18N = {
   },
 
   es: {
+    l_injecting: "Inyectando la lógica de misiones…",
+    l_injected_ok: "La lógica arrancó y está funcionando.",
+    l_injectfail: "La lógica no se ejecutó: {0}. Pulsa Reparar y reiniciar.",
+    l_injectdead: "La lógica se inyectó pero no arrancó. Suele ser un Discord desactualizado o su modo desarrollador activo. Pulsa Reparar y reiniciar.",
     l_claiming: "Reclamando la recompensa de «{0}»…",
     l_claimblocked: "La recompensa de «{0}» fue rechazada: {1}. Recláma­la a mano en la pestaña Misiones.",
     l_claimretry: "No se pudo reclamar la recompensa de «{0}»: {1}. Lo intentaré más tarde.",
@@ -412,7 +428,7 @@ const I18N = {
     l_killfail: "No se pudo cerrar Discord. Ciérralo a mano en el Administrador de tareas o reinicia.",
     l_launching: "Abriendo Discord con el puerto de depuración…",
     l_portfreed: "Puerto {0} liberado.",
-    l_portup: "El puerto de depuración respondió.",
+    l_portup: "El puerto de depuración respondió, ventanas de Discord: {0}.",
     l_waiting: "Esperando la ventana de Discord… {0} s.",
     l_waitlogin: "Discord se abrió pero la ventana de chat no está lista. Si ves la pantalla de inicio de sesión, entra.",
     l_nowindow_help: "Discord nunca apareció en el puerto de depuración. Pulsa Reparar y reiniciar.",
@@ -518,6 +534,10 @@ const I18N = {
   },
 
   pt: {
+    l_injecting: "Injetando a lógica das missões…",
+    l_injected_ok: "A lógica iniciou e está rodando.",
+    l_injectfail: "A lógica não executou: {0}. Clique em Corrigir e reiniciar.",
+    l_injectdead: "A lógica foi injetada mas não iniciou. Normalmente é um Discord desatualizado ou o modo desenvolvedor ligado. Clique em Corrigir e reiniciar.",
     l_claiming: "Resgatando a recompensa de «{0}»…",
     l_claimblocked: "A recompensa de «{0}» foi recusada: {1}. Resgate à mão na aba Missões.",
     l_claimretry: "Não deu para resgatar a recompensa de «{0}»: {1}. Tentarei depois.",
@@ -537,7 +557,7 @@ const I18N = {
     l_killfail: "Não foi possível fechar o Discord. Feche à mão no Gerenciador de Tarefas ou reinicie.",
     l_launching: "Abrindo o Discord com a porta de depuração…",
     l_portfreed: "Porta {0} liberada.",
-    l_portup: "A porta de depuração respondeu.",
+    l_portup: "A porta de depuração respondeu, janelas do Discord: {0}.",
     l_waiting: "Aguardando a janela do Discord… {0} s.",
     l_waitlogin: "O Discord abriu mas a janela de chat não está pronta. Se estiver na tela de login, entre.",
     l_nowindow_help: "O Discord não apareceu na porta de depuração. Clique em Corrigir e reiniciar.",
@@ -643,6 +663,10 @@ const I18N = {
   },
 
   de: {
+    l_injecting: "Injiziere die Quest-Logik…",
+    l_injected_ok: "Die Logik ist gestartet und läuft.",
+    l_injectfail: "Die Logik lief nicht an: {0}. Drück Reparieren und neu starten.",
+    l_injectdead: "Die Logik wurde injiziert, startete aber nicht. Meist ein veraltetes Discord oder dessen Entwicklermodus. Drück Reparieren und neu starten.",
     l_claiming: "Hole die Belohnung für „{0}“…",
     l_claimblocked: "Belohnung für „{0}“ wurde abgelehnt: {1}. Hol sie im Quests-Tab von Hand ab.",
     l_claimretry: "Belohnung für „{0}“ ließ sich nicht abholen: {1}. Versuche es später erneut.",
@@ -662,7 +686,7 @@ const I18N = {
     l_killfail: "Discord ließ sich nicht schließen. Schließ es im Task-Manager von Hand oder starte neu.",
     l_launching: "Starte Discord mit Debug-Port…",
     l_portfreed: "Port {0} freigegeben.",
-    l_portup: "Debug-Port hat geantwortet.",
+    l_portup: "Debug-Port hat geantwortet, Discord-Fenster: {0}.",
     l_waiting: "Warte auf das Discord-Fenster… {0} s.",
     l_waitlogin: "Discord ist offen, aber das Chatfenster ist noch nicht bereit. Beim Login-Bildschirm bitte anmelden.",
     l_nowindow_help: "Discord kam nie am Debug-Port an. Drück Reparieren und neu starten.",
@@ -768,6 +792,10 @@ const I18N = {
   },
 
   fr: {
+    l_injecting: "Injection de la logique des quêtes…",
+    l_injected_ok: "La logique a démarré et tourne.",
+    l_injectfail: "La logique ne s'est pas exécutée : {0}. Clique sur Réparer et relancer.",
+    l_injectdead: "La logique a été injectée mais n'a jamais démarré. Souvent un Discord obsolète ou son mode développeur actif. Clique sur Réparer et relancer.",
     l_claiming: "Récupération de la récompense de « {0} »…",
     l_claimblocked: "Récompense de « {0} » refusée : {1}. Récupère-la à la main dans l'onglet Quêtes.",
     l_claimretry: "Impossible de récupérer la récompense de « {0} » : {1}. Je réessaierai plus tard.",
@@ -787,7 +815,7 @@ const I18N = {
     l_killfail: "Impossible de fermer Discord. Ferme-le à la main dans le Gestionnaire des tâches ou redémarre.",
     l_launching: "Lancement de Discord avec le port de débogage…",
     l_portfreed: "Port {0} libéré.",
-    l_portup: "Le port de débogage a répondu.",
+    l_portup: "Le port de débogage a répondu, fenêtres Discord : {0}.",
     l_waiting: "Attente de la fenêtre Discord… {0} s.",
     l_waitlogin: "Discord est ouvert mais la fenêtre de chat n'est pas prête. Si tu es sur l'écran de connexion, connecte-toi.",
     l_nowindow_help: "Discord n'est jamais apparu sur le port de débogage. Clique sur Réparer et relancer.",
@@ -893,6 +921,10 @@ const I18N = {
   },
 
   pl: {
+    l_injecting: "Wstrzykuję logikę questów…",
+    l_injected_ok: "Logika wystartowała i działa.",
+    l_injectfail: "Logika się nie wykonała: {0}. Kliknij Napraw i uruchom ponownie.",
+    l_injectdead: "Logika została wstrzyknięta, ale nie wystartowała. Zwykle to stara wersja Discorda albo włączony w nim tryb dewelopera. Kliknij Napraw i uruchom ponownie.",
     l_claiming: "Odbieram nagrodę za «{0}»…",
     l_claimblocked: "Nagroda za «{0}» odrzucona: {1}. Odbierz ją ręcznie w zakładce Questy.",
     l_claimretry: "Nie udało się odebrać nagrody za «{0}»: {1}. Spróbuję później.",
@@ -912,7 +944,7 @@ const I18N = {
     l_killfail: "Nie udało się zamknąć Discorda. Zamknij go ręcznie w Menedżerze zadań albo zrestartuj komputer.",
     l_launching: "Uruchamiam Discorda z portem debugowania…",
     l_portfreed: "Port {0} zwolniony.",
-    l_portup: "Port debugowania odpowiedział.",
+    l_portup: "Port debugowania odpowiedział, okien Discorda: {0}.",
     l_waiting: "Czekam na okno Discorda… {0} s.",
     l_waitlogin: "Discord się otworzył, ale okno czatu nie jest gotowe. Jeśli widzisz ekran logowania — zaloguj się.",
     l_nowindow_help: "Discord nie pojawił się na porcie debugowania. Kliknij Napraw i uruchom ponownie.",
@@ -1018,6 +1050,10 @@ const I18N = {
   },
 
   tr: {
+    l_injecting: "Görev mantığı enjekte ediliyor…",
+    l_injected_ok: "Mantık başladı ve çalışıyor.",
+    l_injectfail: "Mantık çalıştırılamadı: {0}. Onar ve yeniden başlat'a bas.",
+    l_injectdead: "Mantık enjekte edildi ama başlamadı. Genelde eski bir Discord sürümü ya da açık geliştirici modu. Onar ve yeniden başlat'a bas.",
     l_claiming: "«{0}» ödülü alınıyor…",
     l_claimblocked: "«{0}» ödülü reddedildi: {1}. Görevler sekmesinden elle al.",
     l_claimretry: "«{0}» ödülü alınamadı: {1}. Sonra tekrar denerim.",
@@ -1037,7 +1073,7 @@ const I18N = {
     l_killfail: "Discord kapatılamadı. Görev Yöneticisi'nden elle kapat veya bilgisayarı yeniden başlat.",
     l_launching: "Discord hata ayıklama portuyla başlatılıyor…",
     l_portfreed: "{0} portu serbest bırakıldı.",
-    l_portup: "Hata ayıklama portu yanıt verdi.",
+    l_portup: "Hata ayıklama portu yanıt verdi, Discord penceresi: {0}.",
     l_waiting: "Discord penceresi bekleniyor… {0} sn.",
     l_waitlogin: "Discord açıldı ama sohbet penceresi hazır değil. Giriş ekranındaysan giriş yap.",
     l_nowindow_help: "Discord hata ayıklama portunda hiç görünmedi. Onar ve yeniden başlat'a bas.",
@@ -1143,6 +1179,10 @@ const I18N = {
   },
 
   uk: {
+    l_injecting: "Впорскую логіку квестів…",
+    l_injected_ok: "Логіка запустилася й працює.",
+    l_injectfail: "Логіка не виконалася: {0}. Натисни «Полагодити й перезапустити».",
+    l_injectdead: "Логіку впорснуто, але вона не запустилася. Зазвичай це стара версія Discord або увімкнений у ньому режим розробника. Натисни «Полагодити й перезапустити».",
     l_claiming: "Забираю нагороду за «{0}»…",
     l_claimblocked: "Нагороду за «{0}» не віддали: {1}. Забери вручну у вкладці «Квести».",
     l_claimretry: "Не вийшло забрати нагороду за «{0}»: {1}. Спробую пізніше.",
@@ -1162,7 +1202,7 @@ const I18N = {
     l_killfail: "Не вдалося закрити Discord. Закрий його вручну через диспетчер задач або перезавантаж комп'ютер.",
     l_launching: "Запускаю Discord з відлагоджувальним портом…",
     l_portfreed: "Порт {0} звільнено.",
-    l_portup: "Відлагоджувальний порт відгукнувся.",
+    l_portup: "Відлагоджувальний порт відгукнувся, вікон Discord: {0}.",
     l_waiting: "Чекаю вікно Discord… {0} с.",
     l_waitlogin: "Discord відкрився, але вікно чату ще не готове. Якщо висить екран входу — увійди в акаунт.",
     l_nowindow_help: "Discord так і не відкрився з відлагоджувальним портом. Натисни «Полагодити й перезапустити».",

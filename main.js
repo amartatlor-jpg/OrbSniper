@@ -1,5 +1,5 @@
 /*!
- * OrbSniper v1.5.0 - Discord Orb farmer (GUI)
+ * OrbSniper v1.5.1 - Discord Orb farmer (GUI)
  * Copyright (c) 2026 synaps_ss - tg: @synaps_ss
  * Licensed under MIT. Use at your own risk. Violates Discord ToS.
  */
@@ -14,7 +14,7 @@ const os = require("os");
 const net = require("net");
 const WebSocket = require("ws");
 
-const VERSION = "1.5.0";
+const VERSION = "1.5.1";
 const PORT = 9222;
 
 let win = null;
@@ -26,6 +26,9 @@ const state = {
   statusIds: new Set(),
   tallyIds: new Set(),
   doneIds: new Set(),
+  injectId: 0,
+  verifyIds: new Set(),
+  verified: false,
   injected: false,
   poll: null
 };
@@ -184,7 +187,11 @@ async function waitForMainPage(timeoutMs = 90000) {
     try {
       const res = await fetch(`http://127.0.0.1:${PORT}/json`);
       const targets = await res.json();
-      if (!sawPort) { sawPort = true; say("l_portup", "ok"); }
+      if (!sawPort) {
+        sawPort = true;
+        const pages = targets.filter((t) => t.type === "page").length;
+        say("l_portup", "ok", String(pages));
+      }
 
       const main = targets.find((t) => t.type === "page" && t.webSocketDebuggerUrl && /discord\.com\/(app|channels)/.test(t.url));
       if (main) return main;
@@ -222,6 +229,9 @@ function connect(target) {
   state.statusIds.clear();
   state.tallyIds.clear();
   state.doneIds.clear();
+  state.verifyIds.clear();
+  state.injectId = 0;
+  state.verified = false;
   state.injected = false;
 
   ws.on("open", () => {
@@ -249,10 +259,18 @@ function connect(target) {
       if (msg.result?.result?.value === true && !state.injected) {
         state.injected = true;
         phase("farming");
-        uiLog("[вњ“] Injected. Goblin mode: ON.");
+        say("l_injecting", "info");
         ws.send(JSON.stringify({ id: ++state.msgId, method: "Runtime.enable" }));
         const questCode = fs.readFileSync(path.join(__dirname, "quest.js"), "utf8");
-        ws.send(JSON.stringify({ id: ++state.msgId, method: "Runtime.evaluate", params: { expression: questCode, returnByValue: true } }));
+        state.injectId = ++state.msgId;
+        ws.send(JSON.stringify({ id: state.injectId, method: "Runtime.evaluate", params: { expression: questCode, returnByValue: true } }));
+
+        // Sending the script is not the same as it running. Check that the
+        // watcher actually came alive instead of claiming success blindly.
+        setTimeout(() => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          state.verifyIds.add(evalInPage("window.__QUEST_WATCHER__ === true"));
+        }, 3000);
 
         state.poll = setInterval(() => {
           if (ws.readyState !== WebSocket.OPEN) return;
@@ -306,6 +324,28 @@ function connect(target) {
       if (typeof val === "string" && val && val !== lastStatus) {
         lastStatus = val;
         send("sniper:status", val);
+      }
+      return;
+    }
+
+    if (state.injectId && msg.id === state.injectId) {
+      state.injectId = 0;
+      const ex = msg.result.exceptionDetails;
+      if (ex) {
+        const why = ex.exception?.description || ex.text || "unknown";
+        say("l_injectfail", "err", String(why).split("\n")[0]);
+        phase("error");
+      }
+      return;
+    }
+
+    if (state.verifyIds.delete(msg.id)) {
+      if (val === true) {
+        state.verified = true;
+        say("l_injected_ok", "ok");
+      } else {
+        say("l_injectdead", "err");
+        phase("error");
       }
       return;
     }
@@ -477,6 +517,9 @@ function stopFlow() {
   state.statusIds.clear();
   state.tallyIds.clear();
   state.doneIds.clear();
+  state.verifyIds.clear();
+  state.injectId = 0;
+  state.verified = false;
   state.running = false;
   send("sniper:running", false);
 }
