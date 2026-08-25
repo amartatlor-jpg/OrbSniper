@@ -1,0 +1,7 @@
+# Keep line endings predictable across checkouts.
+# Windows checkouts were turning LF into CRLF, which silently disabled several
+# regex-based checks in test/run.js.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ico binary
+*.png binary
