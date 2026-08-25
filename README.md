@@ -9,7 +9,7 @@
 It accepts Discord Quests, completes them and claims the rewards inside your own Discord client.
 No token, no game installs, no 500 GB downloads.
 
-[![License](https://img.shields.io/badge/license-MIT-ffab1a?style=flat-square)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-4493f8?style=flat-square)](#requirements) [![Electron](https://img.shields.io/badge/Electron-33-47848F?style=flat-square&logo=electron&logoColor=white)](#) [![Languages](https://img.shields.io/badge/languages-10-5ecb84?style=flat-square)](#languages) [![Downloads](https://img.shields.io/github/downloads/syntaxixr/OrbSniper/total?style=flat-square&color=98a1ae&label=downloads)](../../releases)
+[![License](https://img.shields.io/badge/license-MIT-ffab1a?style=flat-square)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-4493f8?style=flat-square)](#requirements) [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](#) [![Languages](https://img.shields.io/badge/languages-10-5ecb84?style=flat-square)](#languages) [![Downloads](https://img.shields.io/github/downloads/syntaxixr/OrbSniper/total?style=flat-square&color=98a1ae&label=downloads)](../../releases)
 
 [**Download**](../../releases/latest) · [What are Orbs?](#what-are-orbs) · [What it does](#what-it-does) · [FAQ](#faq)
 
@@ -112,6 +112,13 @@ npm install
 npm start
 ```
 
+Run the checks (no Discord, no network needed):
+
+```bash
+npm test
+```
+
+
 ## Build the exe
 
 ```bash
@@ -127,7 +134,7 @@ or just run `build.bat`. You get:
 
 | Button | What it does |
 |---|---|
-| **Start** | Runs the checks, relaunches Discord, injects the logic, starts farming |
+| **Start** | Runs the checks, relaunches Discord if needed, injects the logic, starts farming |
 | **Stop** | Ends everything immediately. Discord stays open |
 | **Skip** | Drops the current quest and moves to the next one |
 | **Fix and restart** | Appears when something breaks. Force-closes every Discord process, frees the debug port and starts over |
@@ -159,7 +166,12 @@ No, they work fine alongside it.
 Discord is unreachable. Turn on a VPN and try again.
 
 **It worked for my friend but not for me.**
-Usually a leftover Discord process holding the debug port. Press **Fix and restart** — it force-closes everything, frees the port and retries. If the console says the port is held by something that isn't Discord, close that program first.
+This was the main thing this release set out to fix. Six separate causes turned out to be invisible on the developer's machine and common on everyone else's: a leftover `app-*` folder made the app launch an outdated Discord build, only the stable branch was looked for, port `9222` being taken by another Electron app was treated as fatal, the engine relied on minified names that differ between Discord builds, `AppData` was read from a hardcoded path that a redirected profile breaks, and the "run as administrator" hint never appeared on a non-English Windows. All six are handled now — the app auto-selects a free port, finds PTB and Canary, picks the newest build and locates Discord's internals by shape rather than by name.
+
+If it still fails, press **Fix and restart** and send the console log (the **Copy** button grabs all of it).
+
+**I use Discord PTB or Canary.**
+Supported, along with a Discord installed somewhere unusual — if it is already running, its real path is used.
 
 **Will this get me banned?**
 It can. Discord detects quest automation and punishes it — warning, quest restrictions, up to suspension. Use an account you can afford to lose.

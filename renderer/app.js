@@ -71,61 +71,64 @@ function closeLangMenu() {
   $("lang-btn").setAttribute("aria-expanded", "false");
 }
 
-// ---------- log messages ----------
-// raw engine output -> readable text in the current language
-const RULES = [
-  // engine chatter the progress bar already shows — dropped entirely
-  [/"(.+?)"\s+game:\s*\d+\/\d+s/i,          null,          "skip"],
-  [/"(.+?)"\s+video:\s*\d+\/\d+/i,          null,          "skip"],
+// ---------- engine events ----------
+// The engine used to log English sentences that this file matched with ~30
+// regexes to work out what had happened, then translated back. Anything that
+// depended on the wording broke silently in some languages - the claimed
+// counter, for one, never moved on German, French, Polish or Turkish.
+// Now the engine sends structured events and the text is built from the key.
+const EVENTS = {
+  started:       ()  => ["l_watching", "info"],
+  takeover:      ()  => ["l_takeover", "info"],
+  dup:           ()  => ["l_dup", "warn"],
+  accepting:     (e) => ["l_accepting", "info", e.quest],
+  accepted:      (e) => ["l_accepted", "ok", e.quest],
+  accept_failed: (e) => ["l_acceptfail", "warn", e.quest, e.why],
+  captcha:       (e) => [e.at === "accept" ? "l_captcha_accept" : "l_captcha_claim", "warn", e.quest],
+  quest_start:   (e) => (e.game ? ["l_playing", "info", e.quest, e.game] : ["l_qstart", "info", e.quest]),
+  quest_done:    (e) => ["l_completed", "ok", e.quest],
+  quest_skipped: (e) => {
+    if (e.why === "stalled") return ["l_stalled", "warn", e.quest];
+    if (e.why === "unsupported") return ["l_unsupported", "warn", e.quest];
+    return ["l_skipped", "warn", e.quest];
+  },
+  claiming:      (e) => ["l_claiming", "info", e.quest],
+  claimed:       (e) => ["l_claimed", "ok", e.quest],
+  claim_blocked: (e) => ["l_claimblocked", "warn", e.quest, e.why],
+  claim_retry:   (e) => ["l_claimretry", "warn", e.quest, e.why],
+  claim_giveup:  (e) => ["l_claimgiveup", "err", e.quest, e.why],
+  unsupported:   (e) => ["l_unsupported", "warn", e.quest],
+  idle:          ()  => ["l_noquests", "info"],
+  scan_error:    (e) => ["l_scanerror", "err", e.why],
+  api_retry:     (e) => ["l_apiretry", "warn", e.quest, e.why],
+  modules_failed:()  => ["l_nomodules", "err"],
+  crashed:       (e) => ["l_fatal", "err", e.why],
+  stopped:       ()  => ["l_stopped", "info"]
+};
 
-  // must sit above the heartbeat filter: this line mentions heartbeats too
-  [/Game quest "(.+?)"\s*[—-]\s*play "(.+?)"/i, "l_playing",   "info"],
-  [/heartbeat|progress ping/i,                 null,          "skip"],
+function onEngineEvent(e) {
+  if (!e || !e.ev) return;
 
-  [/"(.+?)"\s*[—-]\s*console\/achievement only/i, "l_unsupported", "warn"],
-  [/Claiming reward for "(.+?)"/i,            "l_claiming",  "info"],
-  [/Reward claimed:\s*"(.+?)"/i,              "l_claimed",   "ok"],
-  [/Claim blocked for "(.+?)"\s*\((.+?)\)/i,  "l_claimblocked", "warn"],
-  [/Claim failed for "(.+?)"\s*\((.+?)\)/i,   "l_claimgiveup",  "err"],
-  [/Claim error for "(.+?)"\s*\((.+?)\)/i,    "l_claimretry",   "warn"],
-  [/Accepted:\s*"(.+?)"/i,                    "l_accepted",  "ok"],
-  [/"(.+?)"\s*[—-]\s*accepting/i,             "l_accepting", "info"],
-  [/Watcher already running/i,                "l_dup",       "warn"],
-  [/Discord\.exe not found/i,                 "l_nodiscord", "err"],
-  [/Main Discord window never appeared/i,     "l_nowindow",  "err"],
-  [/Webpack never became ready/i,             "l_notready",  "err"],
-  [/Failed to locate Discord modules/i,       "l_nomodules", "err"],
-  [/WebSocket error:?\s*(.*)/i,               "l_wserror",   "err"],
-  [/Fatal:?\s*(.*)/i,                         "l_fatal",     "err"],
-  [/Scan error:?\s*(.*)/i,                    "l_scanerror", "err"],
-  [/captcha/i,                                "l_captcha",   "warn"],
-  [/"(.+?)"\s*[—-]\s*no progress for 3 min/i, "l_stalled",   "warn"],
-  [/"(.+?)"\s*skipped/i,                      "l_skipped",   "warn"],
-  [/"(.+?)".*reward claimed|claimed.*"(.+?)"/i, "l_claimed", "ok"],
-  [/"(.+?)"\s*completed/i,                    "l_completed", "ok"],
-  [/"(.+?)"\s*accepted/i,                     "l_accepted",  "ok"],
-  [/Injected/i,                               "l_injected",  "ok"],
-  [/Watcher started/i,                        "l_watching",  "info"],
-  [/Watcher stopped/i,                        "l_stopped",   "info"],
-  [/Found (\d+) quests?/i,                    "l_found",     "info"],
-  [/No quests in progress|Watching for new/i, "l_noquests",  "info"],
-  [/Discord closed/i,                         "l_closed",    "info"],
-  [/Relaunching Discord|remote debugging port/i, "l_relaunch", "info"],
-  [/Debug connection closed/i,                "l_disconnected", "info"]
-];
-
-function humanize(raw) {
-  const s = String(raw).replace(/^\[quest-auto\]\s*/i, "").replace(/^\[[!✓i]\]\s*/, "").trim();
-  for (const [re, key, level] of RULES) {
-    const m = s.match(re);
-    if (m) {
-      if (level === "skip") return null;
-      return { text: t(key, m[1] || "", m[2] || ""), level };
-    }
+  if (e.ev === "claimed") {
+    claimed++;
+    $("f-claimed").textContent = String(claimed);
+    $("facts").hidden = false;
   }
-  // unknown line: show as-is, guess the level from markers
-  const level = /^\[!\]/.test(String(raw)) || /error|failed/i.test(s) ? "err" : "info";
-  return { text: s, level };
+  if (e.ev === "idle" || e.ev === "started") {
+    $("f-target").textContent = t("f_searching");
+    $("f-pct").textContent = "—";
+    $("f-time").textContent = "—";
+    $("facts").hidden = false;
+    $("bar").hidden = true;
+  }
+  if (e.ev === "modules_failed" || e.ev === "crashed") {
+    setPhase("error");
+  }
+
+  const build = EVENTS[e.ev];
+  if (!build) return;
+  const [key, level, ...args] = build(e);
+  pushLine(t(key, ...args.map((a) => (a === undefined || a === null ? "" : a))), level);
 }
 
 // ---------- state ----------
@@ -155,6 +158,7 @@ function setIdle() {
   setStatus(t("st_idle"), t("hint_idle"), "", "");
   $("bar").hidden = true;
   $("facts").hidden = true;
+  $("tally").hidden = true;
   setButtons();
 }
 
@@ -199,6 +203,7 @@ function nowStamp() {
 }
 
 function pushLine(text, level) {
+  if (!text) return;
   const box = $("log");
   $("cn-body").classList.add("live");
 
@@ -218,7 +223,7 @@ function pushLine(text, level) {
   }
 
   const line = document.createElement("div");
-  line.className = "line " + level;
+  line.className = "line " + (level || "info");
   line.dataset.text = text;
   const time = document.createElement("time");
   time.textContent = nowStamp();
@@ -238,17 +243,13 @@ function pushLine(text, level) {
   }
 }
 
+// Raw launcher diagnostics (WebSocket errors and the like). Everything the user
+// is meant to read arrives as an event or a translated key instead.
 function addLog(raw) {
   if (!raw) return;
-  const line = humanize(raw);
-  if (!line || !line.text) return;
-  const { text, level } = line;
-  pushLine(text, level);
-  if (level === "ok" && /claim|заб|получ|награ|reward|领取|resgat|obten/i.test(text)) {
-    claimed++;
-    $("f-claimed").textContent = String(claimed);
-    $("facts").hidden = false;
-  }
+  const s = String(raw).replace(/^\[[!✓i]\]\s*/, "").trim();
+  if (!s) return;
+  pushLine(s, /^\[!\]/.test(String(raw)) ? "err" : "info");
 }
 
 function say(key) { pushLine(t(key), "info"); }
@@ -285,32 +286,21 @@ function setPhase(phase) {
 }
 
 // ---------- current quest ----------
-function updateQuest(statusStr) {
-  if (!statusStr) return;
+const fmtTime = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
 
-  if (statusStr.startsWith("watching") || statusStr === "idle" || statusStr === "starting") {
-    $("f-target").textContent = t("f_searching");
-    $("f-pct").textContent = "—";
-    $("f-time").textContent = "—";
-    $("facts").hidden = false;
-    $("bar").hidden = true;
-    return;
-  }
-
-  const m = statusStr.match(/^"(.+)"\s*\|\s*(\S+)\s*\|\s*(\d+)\/(\d+)s?\s*\|\s*(\S+)/);
-  if (!m) return;
-
-  const done = parseInt(m[3], 10);
-  const total = parseInt(m[4], 10);
-  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-
+function updateQuest(p) {
+  if (!p || !p.quest) return;
+  const pct = p.need > 0 ? Math.min(100, Math.round((p.done / p.need) * 100)) : 0;
   setProgress(pct);
   $("facts").hidden = false;
-  $("f-target").textContent = m[1];
+  $("f-target").textContent = p.quest;
   $("f-pct").textContent = pct + "%";
-  $("f-time").textContent = m[5];
+  $("f-time").textContent = fmtTime(p.elapsed);
   $("status-text").textContent = t("st_running");
-  $("status-hint").textContent = t("hint_quest", m[1]);
+  $("status-hint").textContent = t("hint_quest", p.quest);
 }
 
 // ---------- toast & modals ----------
@@ -405,15 +395,19 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!$("lang-wrap").contains(e.target)) closeLangMenu();
   });
 
-  $("btn-start").addEventListener("click", () => {
+  const beginRun = () => {
     running = true;
     claimed = 0;
     tally = { total: 0, done: 0, left: 0, manual: 0 };
     $("tally").hidden = true;
     $("finish").hidden = true;
-    showRepair(false);
     $("f-claimed").textContent = "0";
+    showRepair(false);
     setButtons();
+  };
+
+  $("btn-start").addEventListener("click", () => {
+    beginRun();
     setStatus(t("st_starting"), t("hint_starting"), "run", "");
     say("l_begin");
     window.sniper.start();
@@ -434,13 +428,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("btn-repair").addEventListener("click", async () => {
     $("btn-repair").disabled = true;
-    running = true;
-    claimed = 0;
-    tally = { total: 0, done: 0, left: 0, manual: 0 };
-    $("tally").hidden = true;
-    $("finish").hidden = true;
-    $("f-claimed").textContent = "0";
-    setButtons();
+    beginRun();
     setStatus(t("st_repair"), t("hint_repair_run"), "run", "");
     const ok = await window.sniper.repair();
     if (!ok) {
@@ -509,13 +497,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   window.sniper.onLog(addLog);
   window.sniper.onSay(({ key, level, args }) => pushLine(t(key, ...(args || [])), level || "info"));
+  window.sniper.onEvent(onEngineEvent);
   window.sniper.onPhase(setPhase);
-  window.sniper.onStatus(updateQuest);
+  window.sniper.onProgress(updateQuest);
   window.sniper.onTally(renderTally);
   window.sniper.onRunning((isRunning) => { running = isRunning; setButtons(); });
-  window.sniper.onDone(() => {
-    running = false;
-    showRepair(false);
+
+  // "Everything is done" no longer means the session ended: the watcher keeps
+  // looking for new quests, so Stop stays available and the status stays live.
+  window.sniper.onDone((summary) => {
+    if (summary) tally = Object.assign({}, tally, summary);
     setProgress(100);
     setStatus(t("st_done"), tally.manual ? t("hint_done_manual") : t("hint_done"), "ok", "done");
     setButtons();

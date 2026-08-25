@@ -4,93 +4,185 @@
  * Licensed under MIT. Use at your own risk. Violates Discord ToS.
  */
 
-// Discord quest auto-completer — WATCHER MODE (injected into the desktop client via CDP).
-// Scans for quests every 20s: auto-accepts, completes, claims rewards.
-// Manual skip: window.__QUEST_SKIP__ = true  (launcher binds key S)
-// Stop watcher: window.__QUEST_STOP__ = true
+// Injected into the Discord desktop client over CDP.
+//
+// It talks to the launcher through exactly one channel: JSON events written to
+// console.log with a tag prefix. Nothing is polled, nothing is scraped out of
+// human-readable text. Control flags live on window.__ORB__ and are written by
+// the launcher.
 
 (async function () {
-  const log = (m) => console.log(`[quest-auto] ${m}`);
-  const err = (m) => console.error(`[quest-auto] ${m}`);
+  "use strict";
 
-  // Guard against a second injection: two watchers would fight over the same
-  // quests, double every log line and run two timers side by side.
-  if (window.__QUEST_WATCHER__) {
-    log("Watcher already running in this client, ignoring the second injection.");
-    return;
+  const TAG = "__ORBSNIPER__";
+  const SESSION = "__ORB_SESSION__"; // the launcher substitutes a unique id here
+
+  const emit = (o) => {
+    try { o.s = SESSION; console.log(TAG + JSON.stringify(o)); } catch (_) {}
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---------- take over from a previous watcher ----------
+  // Start after Stop used to race: the old watcher was still finishing a quest
+  // while the new injection bailed out on the "already running" guard, and the
+  // launcher was told everything was fine. Now the new one evicts the old one
+  // and only gives up if it refuses to die.
+  const prev = window.__ORB__;
+  if (prev && prev.alive && prev.session !== SESSION) {
+    prev.stop = true;
+    emit({ ev: "takeover" });
+    for (let i = 0; i < 40 && prev.alive; i++) await sleep(500);
+    if (prev.alive) { emit({ ev: "dup" }); return; }
   }
-  window.__QUEST_WATCHER__ = true;
 
-  window.__QUEST_SKIP__ = false;
-  window.__QUEST_STOP__ = false;
-  window.__QUEST_STATUS__ = "starting";
-  window.__QUEST_AUTO_DONE__ = false;
-  // progress summary for the UI
-  window.__QUEST_TALLY__ = '{"total":0,"done":0,"left":0,"manual":0}';
+  const ORB = { alive: true, session: SESSION, skip: false, stop: false };
+  window.__ORB__ = ORB;
 
-  const STALL_TIMEOUT_MS = 3 * 60 * 1000;   // auto-skip quest with no progress for 3 min
+  const STALL_TIMEOUT_MS = 3 * 60 * 1000;   // auto-skip a quest with no progress
   const SCAN_INTERVAL_MS = 20 * 1000;       // scan cycle
   const ENROLL_COOLDOWN_MS = 3 * 60 * 1000; // wait before re-trying a failed accept
   const CLAIM_COOLDOWN_MS = 5 * 60 * 1000;  // wait before re-trying a failed claim
+  const ALIVE_INTERVAL_MS = 30 * 1000;      // proof-of-life for the launcher
+
+  // The launcher re-injects us if these stop arriving, so they must keep coming
+  // even while a quest is running.
+  const aliveTimer = setInterval(() => {
+    if (!ORB.alive) { clearInterval(aliveTimer); return; }
+    emit({ ev: "alive" });
+  }, ALIVE_INTERVAL_MS);
+
+  const die = (ev, extra) => {
+    ORB.alive = false;
+    clearInterval(aliveTimer);
+    emit(Object.assign({ ev }, extra || {}));
+  };
 
   try {
-    delete window.$;
-    const wpRequire = webpackChunkdiscord_app.push([[Symbol()], {}, (r) => r]);
-    webpackChunkdiscord_app.pop();
-
-    const mods = Object.values(wpRequire.c);
-    const pick = (pred) => mods.find(pred);
-    const ApplicationStreamingStore = pick((x) => x?.exports?.A?.__proto__?.getStreamerActiveStreamMetadata)?.exports?.A;
-    const RunningGameStore = pick((x) => x?.exports?.Ay?.getRunningGames)?.exports?.Ay;
-    const QuestsStore = pick((x) => x?.exports?.A?.__proto__?.getQuest)?.exports?.A;
-    const ChannelStore = pick((x) => x?.exports?.A?.__proto__?.getAllThreadsForParent)?.exports?.A;
-    const GuildChannelStore = pick((x) => x?.exports?.Ay?.getSFWDefaultChannel)?.exports?.Ay;
-    const FluxDispatcher = pick((x) => x?.exports?.h?.__proto__?.flushWaitQueue)?.exports?.h;
-    const api = pick((x) => x?.exports?.Bo?.get)?.exports?.Bo;
-
-    if (!QuestsStore || !api || !FluxDispatcher) {
-      err("Failed to locate Discord modules. Client updated?");
-      window.__QUEST_AUTO_DONE__ = true;
+    // ---------- locate Discord internals ----------
+    if (typeof webpackChunkdiscord_app === "undefined") {
+      die("modules_failed", { missing: "webpack" });
       return;
     }
 
-    const manualClaim = new Set();   // rewards Discord refused to hand over
-    const SUPPORTED = ["WATCH_VIDEO", "PLAY_ON_DESKTOP", "PLAY_ON_DESKTOP_V2", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY", "WATCH_VIDEO_ON_MOBILE"];
-    const isApp = typeof DiscordNative !== "undefined";
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    const LOC_QUEST_HOME = 11;
-    const PLATFORM_PC = 4;
+    const wpRequire = webpackChunkdiscord_app.push([[Symbol()], {}, (r) => r]);
+    webpackChunkdiscord_app.pop();
+    if (!wpRequire || !wpRequire.c) {
+      die("modules_failed", { missing: "webpack" });
+      return;
+    }
 
-    const fmtTime = (ms) => {
-      const s = Math.floor(ms / 1000);
-      return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    // Find modules by SHAPE, never by minified export name.
+    //
+    // The old code looked for exports.Bo.get, exports.Ay.getRunningGames and
+    // friends. Those two-letter names are minifier output: they change whenever
+    // Discord ships a new build, and they differ between stable, PTB and
+    // Canary. That is why the engine worked on one machine and died on another
+    // with "Failed to locate Discord modules".
+    //
+    // Method names survive minification, because Discord calls them by name
+    // internally. So we look for an object carrying the right set of methods,
+    // wherever it happens to live.
+    const need = {
+      api: ["get", "post", "put", "patch"],
+      FluxDispatcher: ["dispatch", "subscribe", "unsubscribe"],
+      QuestsStore: ["getQuest"],
+      RunningGameStore: ["getRunningGames", "getGameForPID"],
+      ApplicationStreamingStore: ["getStreamerActiveStreamMetadata"],
+      ChannelStore: ["getSortedPrivateChannels"],
+      GuildChannelStore: ["getAllGuilds"]
+    };
+    const found = {};
+
+    const hasAll = (obj, names) => {
+      if (!obj || (typeof obj !== "object" && typeof obj !== "function")) return false;
+      for (const n of names) {
+        // typeof reaches through the prototype chain, so Flux stores (whose
+        // methods live on the prototype) match without touching __proto__.
+        let fn;
+        try { fn = obj[n]; } catch (_) { return false; }
+        if (typeof fn !== "function") return false;
+      }
+      return true;
     };
 
-    const taskOf = (quest) => {
-      const tc = quest.config.taskConfig ?? quest.config.taskConfigV2;
-      return SUPPORTED.find((t) => tc?.tasks?.[t] != null);
+    const consider = (obj) => {
+      if (!obj) return;
+      for (const key in need) {
+        if (found[key]) continue;
+        if (hasAll(obj, need[key])) found[key] = obj;
+      }
     };
 
-    async function enroll(quest) {
-      try {
-        const res = await api.post({ url: `/quests/${quest.id}/enroll`, body: { location: LOC_QUEST_HOME } });
-        const t = res.body?.type;
-        if (t === "success" || t === "previous_in_flight_request" || (res.status === 200 && !t)) {
-          log(`Accepted: "${quest.config.messages.questName}".`);
-          await sleep(2000);
-          return QuestsStore.getQuest(quest.id) ?? quest;
-        }
-        if (t === "captcha_failed") log(`CAPTCHA on accept for "${quest.config.messages.questName}" — accept it manually in the Quests tab, I'll pick it up.`);
-        else log(`Accept failed (${t || res.status}) for "${quest.config.messages.questName}".`);
-        return null;
-      } catch (e) {
-        log(`Accept error for "${quest.config.messages.questName}": ${e?.message || e}`);
-        return null;
+    // One pass over every module, checking every shape against the export and
+    // its first-level properties. Property access is wrapped because some
+    // Discord exports are getters that throw when touched out of context.
+    for (const mod of Object.values(wpRequire.c)) {
+      let exp;
+      try { exp = mod && mod.exports; } catch (_) { continue; }
+      if (!exp) continue;
+      consider(exp);
+      let keys = [];
+      try { keys = Object.keys(exp); } catch (_) { continue; }
+      for (const k of keys) {
+        let sub;
+        try { sub = exp[k]; } catch (_) { continue; }
+        consider(sub);
       }
     }
 
-    // Discord answers with objects, not Error instances — describe() digs the
-    // useful part out instead of printing [object Object].
+    // Several stores expose getQuest; the one we want also holds the quest map.
+    const isQuestsStore = (c) => {
+      try { return c && typeof c.getQuest === "function" && c.quests instanceof Map; }
+      catch (_) { return false; }
+    };
+    if (!isQuestsStore(found.QuestsStore)) {
+      found.QuestsStore = null;
+      outer:
+      for (const mod of Object.values(wpRequire.c)) {
+        let exp;
+        try { exp = mod && mod.exports; } catch (_) { continue; }
+        if (!exp) continue;
+        if (isQuestsStore(exp)) { found.QuestsStore = exp; break; }
+        let keys = [];
+        try { keys = Object.keys(exp); } catch (_) { continue; }
+        for (const k of keys) {
+          let sub;
+          try { sub = exp[k]; } catch (_) { continue; }
+          if (isQuestsStore(sub)) { found.QuestsStore = sub; break outer; }
+        }
+      }
+    }
+
+    const api = found.api;
+    const FluxDispatcher = found.FluxDispatcher;
+    const QuestsStore = found.QuestsStore;
+    const RunningGameStore = found.RunningGameStore;
+    const ApplicationStreamingStore = found.ApplicationStreamingStore;
+    const ChannelStore = found.ChannelStore;
+    const GuildChannelStore = found.GuildChannelStore;
+
+    // Only these three are required for any quest at all. The rest gate
+    // individual quest types and are reported per quest instead of killing the
+    // whole run.
+    const missing = ["api", "FluxDispatcher", "QuestsStore"].filter((k) => !found[k]);
+    if (missing.length) {
+      die("modules_failed", { missing: missing.join(", ") });
+      return;
+    }
+
+    const manualClaim = new Set();
+    const SUPPORTED = ["WATCH_VIDEO", "PLAY_ON_DESKTOP", "PLAY_ON_DESKTOP_V2", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY", "WATCH_VIDEO_ON_MOBILE"];
+    const isApp = typeof DiscordNative !== "undefined";
+    const LOC_QUEST_HOME = 11;
+    const PLATFORM_PC = 4;
+
+    const taskOf = (quest) => {
+      const tc = quest && quest.config && (quest.config.taskConfig || quest.config.taskConfigV2);
+      return SUPPORTED.find((t) => tc && tc.tasks && tc.tasks[t] != null);
+    };
+    const nameOf = (quest) => quest?.config?.messages?.questName ?? "quest";
+
+    // Discord answers with plain objects, not Errors.
     function describe(e) {
       if (!e) return "unknown";
       if (typeof e === "string") return e;
@@ -106,57 +198,78 @@
       if (detail) return String(detail);
       try { return JSON.stringify(e).slice(0, 160); } catch (_) { return String(e); }
     }
+    const isCaptcha = (x) => /captcha/i.test(String(x || ""));
 
-    // Some claims need a captcha and will never go through unattended.
-    // Give up after a few tries instead of retrying the same quest forever.
+    async function enroll(quest) {
+      const name = nameOf(quest);
+      try {
+        const res = await api.post({ url: `/quests/${quest.id}/enroll`, body: { location: LOC_QUEST_HOME } });
+        const t = res?.body?.type;
+        if (t === "success" || t === "previous_in_flight_request" || (res?.status === 200 && !t)) {
+          emit({ ev: "accepted", quest: name });
+          await sleep(2000);
+          return QuestsStore.getQuest(quest.id) ?? quest;
+        }
+        if (isCaptcha(t)) emit({ ev: "captcha", quest: name, at: "accept" });
+        else emit({ ev: "accept_failed", quest: name, why: String(t || res?.status || "unknown") });
+        return null;
+      } catch (e) {
+        const why = describe(e);
+        if (isCaptcha(why)) emit({ ev: "captcha", quest: name, at: "accept" });
+        else emit({ ev: "accept_failed", quest: name, why });
+        return null;
+      }
+    }
+
     const claimTries = new Map();
     const MAX_CLAIM_TRIES = 3;
 
     async function claimReward(quest) {
-      const name = quest.config.messages.questName;
+      const name = nameOf(quest);
       const tries = claimTries.get(quest.id) ?? 0;
-
-      if (tries >= MAX_CLAIM_TRIES) {
-        manualClaim.add(quest.id);
-        return false;
-      }
+      if (tries >= MAX_CLAIM_TRIES) { manualClaim.add(quest.id); return false; }
       claimTries.set(quest.id, tries + 1);
 
       try {
-        log(`Claiming reward for "${name}"...`);
+        emit({ ev: "claiming", quest: name });
         const res = await api.post({ url: `/quests/${quest.id}/claim-reward`, body: { location: LOC_QUEST_HOME, platform: PLATFORM_PC } });
-        const errs = res.body?.errors;
-        if (res.status === 200 && (!errs || errs.length === 0)) {
+        const errs = res?.body?.errors;
+        if (res?.status === 200 && (!errs || errs.length === 0)) {
           claimTries.delete(quest.id);
           manualClaim.delete(quest.id);
-          log(`Reward claimed: "${name}".`);
+          emit({ ev: "claimed", quest: name });
           return true;
         }
         manualClaim.add(quest.id);
-        const why = errs?.[0]?.message || res.body?.message || `status ${res.status}`;
-        log(`Claim blocked for "${name}" (${why}) — claim manually in the Quests tab.`);
+        const why = errs?.[0]?.message || res?.body?.message || `status ${res?.status}`;
+        if (isCaptcha(why)) emit({ ev: "captcha", quest: name, at: "claim" });
+        else emit({ ev: "claim_blocked", quest: name, why: String(why) });
         return false;
       } catch (e) {
         manualClaim.add(quest.id);
         const why = describe(e);
-        if (tries + 1 >= MAX_CLAIM_TRIES) {
-          log(`Claim failed for "${name}" (${why}) — giving up, claim it manually in the Quests tab.`);
-        } else {
-          log(`Claim error for "${name}" (${why}) — will retry.`);
-        }
+        if (isCaptcha(why)) emit({ ev: "captcha", quest: name, at: "claim" });
+        else if (tries + 1 >= MAX_CLAIM_TRIES) emit({ ev: "claim_giveup", quest: name, why });
+        else emit({ ev: "claim_retry", quest: name, why });
         return false;
       }
     }
 
-    // Returns a Promise resolving when the quest is done, skipped or failed.
+    // ---------- one quest ----------
+    // The contract of this function is that it ALWAYS resolves. Every branch
+    // funnels through settle(), there is a hard time limit on top, and no await
+    // is left without a catch. A single unhandled rejection in here used to
+    // wedge the whole watcher forever while the UI kept showing "farming".
     function processQuest(quest) {
       return new Promise((resolve) => {
-        const pid = Math.floor(Math.random() * 30000) + 1000;
-        const questName = quest.config.messages.questName;
-        const gameName = quest.config.application?.name ?? quest.config.messages?.gameTitle ?? "the game";
-        const tc = quest.config.taskConfig ?? quest.config.taskConfigV2;
+        const questName = nameOf(quest);
+        const tc = quest.config.taskConfig || quest.config.taskConfigV2;
         const taskName = taskOf(quest);
-        const taskData = tc.tasks[taskName];
+        const taskData = tc && tc.tasks && tc.tasks[taskName];
+        if (!taskData) { emit({ ev: "quest_skipped", quest: questName, why: "unsupported" }); resolve(); return; }
+
+        const pid = Math.floor(Math.random() * 30000) + 1000;
+        const gameName = quest.config.application?.name ?? quest.config.messages?.gameTitle ?? "";
         const applicationId = quest.config.application?.id ?? taskData.applications?.[0]?.id;
         const secondsNeeded = taskData.target;
         let secondsDone = quest.userStatus?.progress?.[taskName]?.value ?? 0;
@@ -164,211 +277,260 @@
         const startedAt = Date.now();
         let lastProgressAt = startedAt;
         let lastSeen = secondsDone;
+        let settled = false;
+        const cleanups = [];
 
-        const checkSkip = () => {
-          if (window.__QUEST_SKIP__ || window.__QUEST_STOP__) return true;
-          if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) {
-            log(`"${questName}" — no progress for 3 min, auto-skip (probably needs real action).`);
-            return true;
-          }
-          return false;
+        // Belt and braces: even if every other guard fails, one quest cannot
+        // hold the watcher for longer than this.
+        const hardLimit = Math.max(10 * 60 * 1000, (secondsNeeded - secondsDone) * 3000 + 10 * 60 * 1000);
+        const guard = setTimeout(() => settle("timeout"), hardLimit);
+        cleanups.push(() => clearTimeout(guard));
+
+        function settle(reason) {
+          if (settled) return;
+          settled = true;
+          for (const fn of cleanups) { try { fn(); } catch (_) {} }
+          ORB.skip = false;
+          if (reason === "done") emit({ ev: "quest_done", quest: questName });
+          else emit({ ev: "quest_skipped", quest: questName, why: reason });
+          claimReward(quest).catch(() => {}).then(() => resolve());
+        }
+
+        const stopped = () => {
+          if (ORB.skip || ORB.stop) return "skip";
+          if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) return "stalled";
+          return null;
         };
-        const updateStatus = () => {
-          window.__QUEST_STATUS__ = `"${questName}" | ${taskName} | ${secondsDone}/${secondsNeeded}s | ${fmtTime(Date.now() - startedAt)}`;
+        const report = () => emit({
+          ev: "progress", quest: questName, task: taskName,
+          done: Math.round(secondsDone), need: secondsNeeded, elapsed: Date.now() - startedAt
+        });
+        const progress = (value) => {
+          if (typeof value !== "number" || !(value > secondsDone)) return;
+          secondsDone = value;
+          if (secondsDone > lastSeen) { lastSeen = secondsDone; lastProgressAt = Date.now(); }
+          report();
         };
 
-        const finish = async (reason) => {
-          window.__QUEST_SKIP__ = false;
-          if (reason === "done") log(`"${questName}" completed.`);
-          else log(`"${questName}" skipped (${reason}).`);
-          updateStatus();
-          await claimReward(quest);
-          resolve();
-        };
+        emit({ ev: "quest_start", quest: questName, task: taskName, game: gameName, done: Math.round(secondsDone), need: secondsNeeded });
+        report();
 
+        // ----- video -----
         if (taskName === "WATCH_VIDEO" || taskName === "WATCH_VIDEO_ON_MOBILE") {
           const speed = 7;
           let completed = false;
-          log(`Video quest "${questName}" — spoofing watch (${secondsNeeded}s).`);
           (async () => {
-            while (true) {
-              if (checkSkip()) { finish("skip"); return; }
-              const remaining = Math.min(speed, secondsNeeded - secondsDone);
+            while (!settled) {
+              const why = stopped();
+              if (why) { settle(why); return; }
+              const remaining = Math.max(0, Math.min(speed, secondsNeeded - secondsDone));
               await sleep(remaining * 1000);
-              if (checkSkip()) { finish("skip"); return; }
+              if (settled) return;
+              const why2 = stopped();
+              if (why2) { settle(why2); return; }
+
               const timestamp = secondsDone + speed;
-              const res = await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: Math.min(secondsNeeded, timestamp + Math.random()) } });
-              completed = res.body?.completed_at != null;
-              secondsDone = Math.min(secondsNeeded, timestamp);
-              if (secondsDone > lastSeen) { lastSeen = secondsDone; lastProgressAt = Date.now(); }
-              updateStatus();
+              try {
+                const res = await api.post({
+                  url: `/quests/${quest.id}/video-progress`,
+                  body: { timestamp: Math.min(secondsNeeded, timestamp + Math.random()) }
+                });
+                completed = res?.body?.completed_at != null;
+              } catch (e) {
+                // This used to reject out of the IIFE and hang the watcher.
+                emit({ ev: "api_retry", quest: questName, why: describe(e) });
+                await sleep(5000);
+                continue;
+              }
+              progress(Math.min(secondsNeeded, timestamp));
               if (timestamp >= secondsNeeded) break;
             }
-            if (!completed) await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: secondsNeeded } });
-            finish("done");
-          })();
+            if (settled) return;
+            if (!completed) {
+              try { await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: secondsNeeded } }); }
+              catch (e) { emit({ ev: "api_retry", quest: questName, why: describe(e) }); }
+            }
+            settle("done");
+          })().catch((e) => { emit({ ev: "api_retry", quest: questName, why: describe(e) }); settle("error"); });
+
+        // ----- desktop game -----
         } else if (taskName === "PLAY_ON_DESKTOP" || taskName === "PLAY_ON_DESKTOP_V2") {
-          if (!isApp) { finish("no desktop client"); return; }
-          const mins = Math.ceil((secondsNeeded - secondsDone) / 60);
-          log(`Game quest "${questName}" — play "${gameName}" ~${mins} min. Spoofing launch + direct heartbeats. Press S to skip.`);
+          if (!isApp) { settle("no desktop client"); return; }
 
-          let finished = false;
-          let spoofTeardown = () => {};
+          // The spoof only makes the Discord UI show the game as running.
+          // Heartbeats do the real work, so a missing store is not fatal here.
+          if (RunningGameStore) {
+            api.get({ url: `/applications/public?application_ids=${applicationId}` }).then((res) => {
+              if (settled || !res?.body?.[0]) return;
+              const appData = res.body[0];
+              const exeName = appData.executables?.find((x) => x.os === "win32")?.name?.replace(">", "")
+                ?? String(appData.name || "game").replace(/[\/\\:*?"<>|]/g, "");
+              const fakeGame = {
+                cmdLine: `C:\\Program Files\\${appData.name}\\${exeName}`, exeName,
+                exePath: `c:/program files/${String(appData.name).toLowerCase()}/${exeName}`,
+                hidden: false, isLauncher: false, id: applicationId, name: appData.name,
+                pid, pidPath: [pid], processName: appData.name, start: Date.now()
+              };
+              const realGames = RunningGameStore.getRunningGames();
+              const realGetRunning = RunningGameStore.getRunningGames;
+              const realGetForPID = RunningGameStore.getGameForPID;
+              RunningGameStore.getRunningGames = () => [fakeGame];
+              RunningGameStore.getGameForPID = (p) => [fakeGame].find((x) => x.pid === p);
+              FluxDispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: realGames, added: [fakeGame], games: [fakeGame] });
+              cleanups.push(() => {
+                RunningGameStore.getRunningGames = realGetRunning;
+                RunningGameStore.getGameForPID = realGetForPID;
+                try { FluxDispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: [] }); } catch (_) {}
+              });
+            }).catch(() => {});
+          }
 
-          // Best-effort spoof so the Discord UI shows the game as running.
-          api.get({ url: `/applications/public?application_ids=${applicationId}` }).then((res) => {
-            if (finished || !res.body?.[0]) return;
-            const appData = res.body[0];
-            const exeName = appData.executables?.find((x) => x.os === "win32")?.name?.replace(">", "") ?? appData.name.replace(/[\/\\:*?"<>|]/g, "");
-            const fakeGame = {
-              cmdLine: `C:\\Program Files\\${appData.name}\\${exeName}`, exeName,
-              exePath: `c:/program files/${appData.name.toLowerCase()}/${exeName}`,
-              hidden: false, isLauncher: false, id: applicationId, name: appData.name,
-              pid, pidPath: [pid], processName: appData.name, start: Date.now()
-            };
-            const realGames = RunningGameStore.getRunningGames();
-            const realGetRunning = RunningGameStore.getRunningGames;
-            const realGetForPID = RunningGameStore.getGameForPID;
-            RunningGameStore.getRunningGames = () => [fakeGame];
-            RunningGameStore.getGameForPID = (p) => [fakeGame].find((x) => x.pid === p);
-            FluxDispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: realGames, added: [fakeGame], games: [fakeGame] });
-            spoofTeardown = () => {
-              RunningGameStore.getRunningGames = realGetRunning;
-              RunningGameStore.getGameForPID = realGetForPID;
-              FluxDispatcher.dispatch({ type: "RUNNING_GAMES_CHANGE", removed: [fakeGame], added: [], games: [] });
-            };
-          }).catch(() => {}); // spoof is optional — heartbeats do the real work
-
-          const end = (reason) => {
-            if (finished) return;
-            finished = true;
-            clearInterval(skipWatcher);
-            spoofTeardown();
-            finish(reason);
-          };
           const skipWatcher = setInterval(() => {
-            if (checkSkip()) end("skip");
+            const why = stopped();
+            if (why) settle(why);
           }, 2000);
+          cleanups.push(() => clearInterval(skipWatcher));
 
-          // Primary progress driver: direct heartbeats every 20s.
           (async () => {
-            while (!finished) {
+            while (!settled) {
               await sleep(20 * 1000);
-              if (finished) break;
-              if (checkSkip()) { end("skip"); break; }
+              if (settled) return;
+              const why = stopped();
+              if (why) { settle(why); return; }
               try {
                 const res = await api.post({ url: `/quests/${quest.id}/heartbeat`, body: { application_id: applicationId, terminal: false } });
-                const progress = res.body?.progress?.[taskName]?.value;
-                if (typeof progress === "number" && progress > secondsDone) {
-                  secondsDone = progress;
-                  if (secondsDone > lastSeen) { lastSeen = secondsDone; lastProgressAt = Date.now(); }
-                  updateStatus();
-                  log(`"${questName}" game: ${secondsDone}/${secondsNeeded}s (${fmtTime(Date.now() - startedAt)})`);
-                }
+                progress(res?.body?.progress?.[taskName]?.value);
                 if (secondsDone >= secondsNeeded) {
                   api.post({ url: `/quests/${quest.id}/heartbeat`, body: { application_id: applicationId, terminal: true } }).catch(() => {});
-                  end("done");
-                  break;
+                  settle("done");
+                  return;
                 }
               } catch (e) {
-                log(`"${questName}" heartbeat error: ${e?.message || e} — retrying.`);
+                emit({ ev: "api_retry", quest: questName, why: describe(e) });
                 await sleep(5000);
               }
             }
-          })();
+          })().catch((e) => { emit({ ev: "api_retry", quest: questName, why: describe(e) }); settle("error"); });
+
+        // ----- stream -----
         } else if (taskName === "STREAM_ON_DESKTOP") {
-          if (!isApp) { finish("no desktop client"); return; }
-          const mins = Math.ceil((secondsNeeded - secondsDone) / 60);
-          log(`Stream quest "${questName}" — stream "${gameName}" ~${mins} min in VC. Spoofing metadata.`);
-          log(`NOTE: stream quests usually need a REAL stream in a voice channel. If stuck 3 min — auto-skip.`);
+          if (!isApp) { settle("no desktop client"); return; }
+          if (!ApplicationStreamingStore) { settle("module missing"); return; }
+
           const realFunc = ApplicationStreamingStore.getStreamerActiveStreamMetadata;
           ApplicationStreamingStore.getStreamerActiveStreamMetadata = () => ({ id: applicationId, pid, sourceName: null });
-          let torn = false;
-          const teardown = () => {
-            if (torn) return; torn = true;
-            ApplicationStreamingStore.getStreamerActiveStreamMetadata = realFunc;
-            FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", listener);
-            clearInterval(skipWatcher);
-          };
+
           const listener = (data) => {
-            const progress = quest.config.configVersion === 1
-              ? data.userStatus.streamProgressSeconds
-              : Math.floor(data.userStatus.progress.STREAM_ON_DESKTOP.value);
-            if (progress > lastSeen) { lastSeen = progress; lastProgressAt = Date.now(); }
-            secondsDone = progress;
-            updateStatus();
-            if (progress >= secondsNeeded) { teardown(); finish("done"); }
+            try {
+              const value = quest.config.configVersion === 1
+                ? data?.userStatus?.streamProgressSeconds
+                : Math.floor(data?.userStatus?.progress?.STREAM_ON_DESKTOP?.value ?? 0);
+              progress(value);
+              if (secondsDone >= secondsNeeded) settle("done");
+            } catch (_) {}
           };
           const skipWatcher = setInterval(() => {
-            if (checkSkip()) { teardown(); finish("skip"); }
+            const why = stopped();
+            if (why) settle(why);
           }, 2000);
+
+          cleanups.push(() => {
+            ApplicationStreamingStore.getStreamerActiveStreamMetadata = realFunc;
+            try { FluxDispatcher.unsubscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", listener); } catch (_) {}
+            clearInterval(skipWatcher);
+          });
           FluxDispatcher.subscribe("QUESTS_SEND_HEARTBEAT_SUCCESS", listener);
+
+        // ----- activity -----
         } else if (taskName === "PLAY_ACTIVITY") {
-          const channelId = ChannelStore.getSortedPrivateChannels()?.[0]?.id ??
-            Object.values(GuildChannelStore.getAllGuilds()).find((x) => x?.VOCAL?.length > 0)?.VOCAL[0]?.channel?.id;
-          if (!channelId) { finish("no voice channel"); return; }
+          let channelId = null;
+          try {
+            channelId = ChannelStore?.getSortedPrivateChannels?.()?.[0]?.id ??
+              Object.values(GuildChannelStore?.getAllGuilds?.() ?? {}).find((x) => x?.VOCAL?.length > 0)?.VOCAL?.[0]?.channel?.id;
+          } catch (_) {}
+          if (!channelId) { settle("no voice channel"); return; }
           const streamKey = `call:${channelId}:1`;
-          log(`Activity quest "${questName}" — heartbeats (${secondsNeeded}s).`);
+
           (async () => {
-            while (true) {
-              if (checkSkip()) { finish("skip"); return; }
-              const res = await api.post({ url: `/quests/${quest.id}/heartbeat`, body: { stream_key: streamKey, terminal: false } });
-              const progress = res.body.progress.PLAY_ACTIVITY.value;
-              if (progress > lastSeen) { lastSeen = progress; lastProgressAt = Date.now(); }
-              secondsDone = progress;
-              updateStatus();
-              await sleep(20 * 1000);
-              if (progress >= secondsNeeded) {
-                await api.post({ url: `/quests/${quest.id}/heartbeat`, body: { stream_key: streamKey, terminal: true } });
-                break;
+            while (!settled) {
+              const why = stopped();
+              if (why) { settle(why); return; }
+              try {
+                const res = await api.post({ url: `/quests/${quest.id}/heartbeat`, body: { stream_key: streamKey, terminal: false } });
+                // This was res.body.progress.PLAY_ACTIVITY.value with no guards:
+                // one odd response wedged the watcher for good.
+                progress(res?.body?.progress?.PLAY_ACTIVITY?.value);
+              } catch (e) {
+                emit({ ev: "api_retry", quest: questName, why: describe(e) });
+                await sleep(5000);
+                continue;
               }
+              if (secondsDone >= secondsNeeded) {
+                try { await api.post({ url: `/quests/${quest.id}/heartbeat`, body: { stream_key: streamKey, terminal: true } }); } catch (_) {}
+                settle("done");
+                return;
+              }
+              await sleep(20 * 1000);
             }
-            finish("done");
-          })();
+          })().catch((e) => { emit({ ev: "api_retry", quest: questName, why: describe(e) }); settle("error"); });
+
         } else {
-          finish("unsupported");
+          settle("unsupported");
         }
       });
     }
 
     // ---------- watcher loop ----------
-    const processed = new Set();      // quest ids fully handled
-    const enrollFailedAt = new Map(); // quest id -> timestamp of failed accept
-    const claimFailedAt = new Map();  // quest id -> timestamp of failed claim
+    const processed = new Set();
+    const enrollFailedAt = new Map();
+    const claimFailedAt = new Map();
     const notifiedUnsupported = new Set();
+    let workedThisSession = false;
+    let announcedIdle = false;
+    let announcedDone = false;
+
+    function tally(all) {
+      const doable = all.filter((q) => taskOf(q));
+      return {
+        total: doable.length,
+        done: doable.filter((q) => q.userStatus?.claimedAt).length,
+        left: doable.filter((q) => !processed.has(q.id) && !q.userStatus?.completedAt).length,
+        manual: doable.filter((q) => manualClaim.has(q.id) && !q.userStatus?.claimedAt).length
+      };
+    }
 
     async function scanOnce() {
       const now = Date.now();
-      const all = [...QuestsStore.quests.values()].filter((q) => new Date(q.config.expiresAt).getTime() > now);
+      const all = [...QuestsStore.quests.values()]
+        .filter((q) => { try { return new Date(q.config.expiresAt).getTime() > now; } catch (_) { return false; } });
 
-      // 1) claim completed-but-unclaimed (with retry cooldown)
+      // 1) claim what is already finished
       for (const q of all) {
+        if (ORB.stop) return tally(all);
         if (processed.has(q.id)) continue;
-        if (q.userStatus?.completedAt) {
-          if (!q.userStatus.claimedAt) {
-            const failedAt = claimFailedAt.get(q.id) ?? 0;
-            if (now - failedAt < CLAIM_COOLDOWN_MS) continue;
-            if (await claimReward(q)) processed.add(q.id);
-            else {
-              claimFailedAt.set(q.id, Date.now());
-              // Out of attempts: stop touching it, the user has to do it by hand.
-              if (manualClaim.has(q.id)) processed.add(q.id);
-            }
-          } else {
-            processed.add(q.id);
-          }
+        if (!q.userStatus?.completedAt) continue;
+        if (q.userStatus.claimedAt) { processed.add(q.id); continue; }
+        const failedAt = claimFailedAt.get(q.id) ?? 0;
+        if (now - failedAt < CLAIM_COOLDOWN_MS) continue;
+        workedThisSession = true;
+        announcedDone = false;
+        if (await claimReward(q)) processed.add(q.id);
+        else {
+          claimFailedAt.set(q.id, Date.now());
+          if (manualClaim.has(q.id)) processed.add(q.id);
         }
       }
 
-      // 2) process active quests one by one
+      // 2) work the active ones
       for (const q of all) {
+        if (ORB.stop) return tally(all);
         if (processed.has(q.id)) continue;
         if (q.userStatus?.completedAt) continue;
 
         if (!taskOf(q)) {
           if (!notifiedUnsupported.has(q.id)) {
             notifiedUnsupported.add(q.id);
-            log(`"${q.config.messages.questName}" — console/achievement only, can't auto-do. Skipping.`);
+            emit({ ev: "unsupported", quest: nameOf(q) });
           }
           processed.add(q.id);
           continue;
@@ -378,51 +540,56 @@
         if (!quest.userStatus?.enrolledAt) {
           const failedAt = enrollFailedAt.get(quest.id) ?? 0;
           if (now - failedAt < ENROLL_COOLDOWN_MS) continue;
-          log(`"${quest.config.messages.questName}" — accepting (PC)...`);
+          emit({ ev: "accepting", quest: nameOf(quest) });
           const enrolled = await enroll(quest);
           if (!enrolled) { enrollFailedAt.set(quest.id, Date.now()); continue; }
           quest = enrolled;
         }
 
+        workedThisSession = true;
+        announcedDone = false;
         await processQuest(quest);
         processed.add(quest.id);
-        window.__QUEST_SKIP__ = false;
+        ORB.skip = false;
       }
 
-      // only count quests we can actually do
-      const doable = all.filter((q) => taskOf(q));
-      const left = doable.filter((q) => !processed.has(q.id) && !q.userStatus?.completedAt).length;
-      window.__QUEST_TALLY__ = JSON.stringify({
-        total: doable.length,
-        done: doable.filter((q) => q.userStatus?.claimedAt).length,
-        left,
-        manual: doable.filter((q) => manualClaim.has(q.id) && !q.userStatus?.claimedAt).length
-      });
-
-      return left;
+      return tally(all);
     }
 
-    log("Watcher started. Scanning every 20s — new quests are picked up automatically.");
-    let lastPending = -1;
-    while (true) {
-      if (window.__QUEST_STOP__) break;
+    emit({ ev: "started" });
+
+    while (!ORB.stop) {
+      let counts = null;
       try {
-        const pending = await scanOnce();
-        if (pending !== lastPending) {
-          lastPending = pending;
-          if (pending === 0) log("No quests in progress. Watching for new ones...");
-        }
+        counts = await scanOnce();
       } catch (e) {
-        err(`Scan error: ${e?.message || e}`);
+        emit({ ev: "scan_error", why: describe(e) });
       }
-      window.__QUEST_STATUS__ = `watching... ${new Date().toLocaleTimeString()}`;
-      await sleep(SCAN_INTERVAL_MS);
+
+      if (counts) {
+        emit({ ev: "tally", total: counts.total, done: counts.done, left: counts.left, manual: counts.manual });
+
+        // "Everything is done" is a real event now, instead of a flag that only
+        // ever meant "the engine crashed". The watcher keeps running: new
+        // quests are still picked up, exactly as the README promises.
+        if (counts.left === 0 && workedThisSession && !announcedDone) {
+          announcedDone = true;
+          announcedIdle = false;
+          emit({ ev: "all_done", done: counts.done, manual: counts.manual });
+        } else if (counts.left === 0 && !workedThisSession && !announcedIdle) {
+          announcedIdle = true;
+          emit({ ev: "idle" });
+        } else if (counts.left > 0) {
+          announcedIdle = false;
+        }
+      }
+
+      for (let i = 0; i < SCAN_INTERVAL_MS / 500 && !ORB.stop; i++) await sleep(500);
     }
-    log("Watcher stopped.");
-    window.__QUEST_WATCHER__ = false;
+
+    die("stopped");
   } catch (e) {
-    err(`Fatal: ${e?.stack || e}`);
-    window.__QUEST_WATCHER__ = false;
-    window.__QUEST_AUTO_DONE__ = true;
+    const why = (e && (e.stack || e.message)) ? String(e.stack || e.message).split("\n")[0] : String(e);
+    die("crashed", { why });
   }
 })();

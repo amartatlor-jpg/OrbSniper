@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # The suite needs no Discord, no Electron binary and no network, so it
+      # runs anywhere. It checks syntax, that all ten languages carry the same
+      # keys, that the renderer handles every event the engine can emit, and
+      # that the Discord module lookup survives unknown minified names.
+      - name: Run tests
+        run: node test/run.js
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Audit dependencies
+        run: npm audit --audit-level=high --package-lock-only

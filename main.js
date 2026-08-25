@@ -7,30 +7,40 @@
 const { app, BrowserWindow, ipcMain, clipboard, shell } = require("electron");
 
 const DONATE_ADDRESS = "TJXGAkovUoA2z9C7mWBiB9SGLVQu6oSsf";
-const { execSync, exec, spawn } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const net = require("net");
+const crypto = require("crypto");
 const WebSocket = require("ws");
 
 const VERSION = "1.5.0";
-const PORT = 9222;
+
+// 9222 is the conventional CDP port, which is exactly why it is so often taken
+// by some other Electron app. We try it first and fall back to a free one.
+const DEFAULT_PORT = 9222;
+const PORT_RANGE_END = 9260;
+
+const EVENT_TAG = "__ORBSNIPER__";
+const ALIVE_TIMEOUT_MS = 90 * 1000;   // no engine event for this long -> re-inject
+const RECONNECT_TRIES = 20;           // Discord restarts (updates) are survivable
 
 let win = null;
 const state = {
   running: false,
+  stopping: false,      // user pressed Stop: do not auto-reconnect
   ws: null,
   msgId: 0,
-  readinessIds: new Set(),
-  statusIds: new Set(),
-  tallyIds: new Set(),
-  doneIds: new Set(),
-  injectId: 0,
-  verifyIds: new Set(),
-  verified: false,
+  port: 0,
+  session: "",
+  target: null,
+  readyPoll: null,
+  watchdog: null,
+  lastEventAt: 0,
+  injecting: false,
   injected: false,
-  poll: null
+  pending: new Map()    // CDP message id -> handler
 };
 
 // ---------- UI helpers ----------
@@ -40,243 +50,465 @@ function send(channel, payload) {
 function uiLog(msg) { send("sniper:log", msg); }
 function say(key, level, ...args) { send("sniper:say", { key, level, args }); }
 function phase(p) { send("sniper:phase", p); }
+function setRunning(v) { state.running = v; send("sniper:running", v); }
 
-// ---------- Discord launcher logic ----------
-function findDiscordExe() {
-  const base = path.join(os.homedir(), "AppData", "Local", "Discord");
-  const candidates = [];
+// Every failure path must go through here. Leaving state.running true was what
+// wedged the UI: the Start button stayed disabled and runFlow() returned early
+// on its own guard forever after.
+function fail(key, level, ...args) {
+  if (key) say(key, level || "err", ...args);
+  phase("error");
+  stopEngine(false);
+  setRunning(false);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------- Windows helpers ----------
+// Full paths, because a broken PATH is a real thing on other people's machines
+// and "tasklist" alone then resolves to nothing.
+const SYS32 = path.join(process.env.SystemRoot || "C:\\Windows", "System32");
+const sysExe = (name) => {
+  const full = path.join(SYS32, name);
+  return fs.existsSync(full) ? full : name;
+};
+
+function runTool(name, args) {
   try {
-    for (const entry of fs.readdirSync(base)) {
-      if (entry.startsWith("app-")) candidates.push(path.join(base, entry, "Discord.exe"));
+    return execFileSync(sysExe(name), args, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      timeout: 15000
+    });
+  } catch (_) { return ""; }
+}
+
+// Are we elevated? High Mandatory Level means "as administrator".
+function isElevated() {
+  return runTool("whoami.exe", ["/groups"]).includes("S-1-16-12288");
+}
+
+function discordPids() {
+  const out = runTool("tasklist.exe", ["/FI", "IMAGENAME eq Discord.exe", "/FO", "CSV", "/NH"]);
+  return out.split("\n")
+    .map((l) => l.split('","')[1])
+    .filter((x) => x && /^\d+$/.test(x.trim()))
+    .map((x) => parseInt(x, 10));
+}
+
+function processName(pid) {
+  const out = runTool("tasklist.exe", ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"]);
+  const m = out.match(/^"([^"]+)"/);
+  return m ? m[1] : "";
+}
+
+function pidOnPort(port) {
+  const out = runTool("netstat.exe", ["-ano", "-p", "TCP"]);
+  for (const line of out.split("\n")) {
+    if (!line.includes("LISTENING")) continue;
+    if (!new RegExp(`[:.]${port}\\s`).test(line)) continue;
+    const parts = line.trim().split(/\s+/);
+    const pid = parseInt(parts[parts.length - 1], 10);
+    if (Number.isFinite(pid)) return pid;
+  }
+  return 0;
+}
+
+// ---------- finding Discord ----------
+// Discord keeps every installed build in its own app-<version> folder and does
+// not always delete the old ones. The previous version matched /app-(\d+)/,
+// which captures "1" out of "app-1.0.9253" for every folder alike, so the
+// comparator always returned 0 and the FIRST one alphabetically won - usually
+// the oldest build, which then just hands off to the updater and never opens
+// the debug port. This compares real version tuples.
+function versionTuple(name) {
+  const m = String(name).match(/app-([\d.]+)/);
+  if (!m) return [0];
+  return m[1].split(".").map((n) => parseInt(n, 10) || 0);
+}
+function compareVersions(a, b) {
+  const va = versionTuple(a);
+  const vb = versionTuple(b);
+  for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+    const d = (vb[i] || 0) - (va[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
+// Path of an already-running Discord: the most reliable answer there is, and it
+// covers installs in places we would never guess.
+function runningDiscordExe() {
+  const ps = path.join(SYS32, "WindowsPowerShell", "v1.0", "powershell.exe");
+  if (!fs.existsSync(ps)) return null;
+  try {
+    const out = execFileSync(ps, [
+      "-NoProfile", "-NonInteractive", "-Command",
+      "(Get-Process -Name Discord -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1 -ExpandProperty Path)"
+    ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], windowsHide: true, timeout: 15000 }).trim();
+    return out && fs.existsSync(out) ? out : null;
+  } catch (_) { return null; }
+}
+
+// Every Discord branch, not just stable, and via the environment rather than
+// homedir()+"AppData": a redirected or OneDrive-backed profile breaks the
+// hardcoded path and the app then claims Discord is not installed.
+function findDiscordExe() {
+  const running = runningDiscordExe();
+  if (running) return running;
+
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+  const branches = ["Discord", "DiscordPTB", "DiscordCanary", "DiscordDevelopment"];
+  const candidates = [];
+
+  for (const branch of branches) {
+    const base = path.join(localAppData, branch);
+    let entries = [];
+    try { entries = fs.readdirSync(base); } catch (_) { continue; }
+    const apps = entries.filter((e) => e.startsWith("app-")).sort(compareVersions);
+    for (const entry of apps) {
+      for (const exe of ["Discord.exe", "DiscordPTB.exe", "DiscordCanary.exe", "DiscordDevelopment.exe"]) {
+        candidates.push(path.join(base, entry, exe));
+      }
     }
-  } catch (_) {}
-  candidates.push("C:\\Program Files\\Discord\\Discord.exe");
-  candidates.sort((a, b) => {
-    const va = (a.match(/app-(\d+)/) || [0, 0])[1];
-    const vb = (b.match(/app-(\d+)/) || [0, 0])[1];
-    return vb - va;
-  });
-  for (const c of candidates) if (fs.existsSync(c)) return c;
+  }
+
+  for (const root of [process.env.ProgramFiles, process.env["ProgramFiles(x86)"], "C:\\Program Files"]) {
+    if (!root) continue;
+    for (const branch of branches) candidates.push(path.join(root, branch, `${branch}.exe`));
+  }
+
+  for (const c of candidates) {
+    try { if (fs.existsSync(c)) return c; } catch (_) {}
+  }
   return null;
 }
 
+function manualCommand(exe, port) {
+  return `"${exe}" --remote-debugging-port=${port}`;
+}
+
+// ---------- Discord settings ----------
+function discordSettingsPath() {
+  const roaming = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+  return path.join(roaming, "discord", "settings.json");
+}
+
+// Writes one flag into Discord's settings. If the file cannot be parsed we now
+// leave it alone instead of replacing the user's whole configuration with a
+// single key, and we keep a backup either way.
 function enableDevTools() {
   try {
-    const settingsPath = path.join(os.homedir(), "AppData", "Roaming", "discord", "settings.json");
+    const settingsPath = discordSettingsPath();
     let settings = {};
     if (fs.existsSync(settingsPath)) {
-      try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch (_) {}
+      const raw = fs.readFileSync(settingsPath, "utf8");
+      try {
+        settings = JSON.parse(raw);
+      } catch (_) {
+        say("l_settings_odd", "warn");
+        return;
+      }
+      if (!settings || typeof settings !== "object" || Array.isArray(settings)) return;
+      try { fs.writeFileSync(settingsPath + ".orbsniper.bak", raw); } catch (_) {}
     }
+    if (settings.DANGEROUS_ENABLE_DEVTOOLS_ONLY_ENABLE_IF_YOU_KNOW_WHAT_YOURE_DOING === true) return;
     settings.DANGEROUS_ENABLE_DEVTOOLS_ONLY_ENABLE_IF_YOU_KNOW_WHAT_YOURE_DOING = true;
     fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   } catch (_) {}
 }
 
-function discordPids() {
+function settingsWritable() {
   try {
-    const out = execSync('tasklist /FI "IMAGENAME eq Discord.exe" /FO CSV /NH', { encoding: "utf8" });
-    return out.split("\n")
-      .map((l) => l.split('","')[1])
-      .filter((x) => x && /^\d+$/.test(x.trim()))
-      .map((x) => parseInt(x, 10));
-  } catch (_) { return []; }
-}
-
-// Are we running elevated? High Mandatory Level means "as administrator".
-function isElevated() {
-  try {
-    const whoami = path.join(process.env.SystemRoot || "C:\Windows", "System32", "whoami.exe");
-    const out = execSync(`"${whoami}" /groups`, { encoding: "utf8" });
-    return out.includes("S-1-16-12288");
+    const dir = path.dirname(discordSettingsPath());
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, ".orbsniper-probe");
+    fs.writeFileSync(probe, "1");
+    fs.unlinkSync(probe);
+    return true;
   } catch (_) { return false; }
 }
 
-// Returns { ok, denied }. Access denied means Discord runs with higher rights
-// than we do — the usual reason a kill silently does nothing.
-function killDiscord() {
+// ---------- ports ----------
+function portFree(port) {
+  return new Promise((resolve) => {
+    const srv = net.createServer();
+    srv.once("error", () => resolve(false));
+    srv.once("listening", () => srv.close(() => resolve(true)));
+    srv.listen(port, "127.0.0.1");
+  });
+}
+
+// Remembering the port means a Discord we started earlier is still reachable
+// after the launcher is restarted.
+function portFile() {
+  try { return path.join(app.getPath("userData"), "port.json"); } catch (_) { return null; }
+}
+function rememberPort(port) {
+  try { const f = portFile(); if (f) fs.writeFileSync(f, JSON.stringify({ port })); } catch (_) {}
+}
+function rememberedPort() {
   try {
-    execSync("taskkill /F /IM Discord.exe /T", { stdio: "pipe" });
-    return { ok: true, denied: false };
-  } catch (e) {
-    const text = String(e.stdout || "") + String(e.stderr || "") + String(e.message || "");
-    const denied = /access is denied|Отказано в доступе|отказано/i.test(text);
-    return { ok: false, denied };
-  }
-}
-
-// The command a user can paste into cmd to start Discord with the port by hand.
-function manualCommand(exe) {
-  return `"${exe}" --remote-debugging-port=${PORT}`;
-}
-
-// Kills Discord and waits until the processes are actually gone.
-// A fixed sleep is not enough: if one is still alive, the new instance just
-// forwards its arguments to it and the debug port never opens.
-async function killDiscordAndWait(timeoutMs = 15000) {
-  const started = Date.now();
-  let attempt = 0;
-  let sawDenied = false;
-
-  while (Date.now() - started < timeoutMs) {
-    const pids = discordPids();
-    if (pids.length === 0) return { ok: true, denied: false };
-
-    attempt++;
-    const res = killDiscord();
-    if (res.denied) sawDenied = true;
-
-    if (attempt > 2) {
-      for (const pid of pids) {
-        try { execSync(`taskkill /F /PID ${pid} /T`, { stdio: "pipe" }); }
-        catch (e) {
-          const text = String(e.stdout || "") + String(e.stderr || "") + String(e.message || "");
-          if (/access is denied|Отказано в доступе|отказано/i.test(text)) sawDenied = true;
-        }
-      }
-    }
-    await sleep(700);
-  }
-  return { ok: discordPids().length === 0, denied: sawDenied };
-}
-
-// Returns the PID holding the port, or 0.
-function pidOnPort(port) {
-  try {
-    const out = execSync(`netstat -ano -p TCP | findstr LISTENING | findstr :${port}`, { encoding: "utf8" });
-    const line = out.split("\n").find((l) => l.includes(`:${port}`));
-    if (!line) return 0;
-    const parts = line.trim().split(/\s+/);
-    const pid = parseInt(parts[parts.length - 1], 10);
-    return Number.isFinite(pid) ? pid : 0;
+    const f = portFile();
+    if (!f || !fs.existsSync(f)) return 0;
+    const p = JSON.parse(fs.readFileSync(f, "utf8")).port;
+    return Number.isInteger(p) ? p : 0;
   } catch (_) { return 0; }
 }
 
-function processName(pid) {
-  try {
-    const out = execSync(`tasklist /FI "PID eq ${pid}" /FO CSV /NH`, { encoding: "utf8" });
-    const m = out.match(/^"([^"]+)"/);
-    return m ? m[1] : "";
-  } catch (_) { return ""; }
-}
-
-// Frees the debug port. Returns "free" | "killed" | "foreign" | "stuck".
-async function freePort(port) {
-  const pid = pidOnPort(port);
-  if (!pid) return "free";
-
-  const name = processName(pid);
-  if (!/discord/i.test(name)) return "foreign";
-
-  try { execSync(`taskkill /F /PID ${pid} /T`, { stdio: "ignore" }); } catch (_) {}
-  for (let i = 0; i < 8; i++) {
-    await sleep(500);
-    if (!pidOnPort(port)) return "killed";
+// A port held by something that is not Discord is no longer fatal: we simply
+// use a different one. That alone fixes a whole class of "works for you, not
+// for me" reports, because 9222 is the default for every other Electron app.
+async function choosePort() {
+  if (await portFree(DEFAULT_PORT)) return DEFAULT_PORT;
+  const pid = pidOnPort(DEFAULT_PORT);
+  if (pid && /discord/i.test(processName(pid))) return DEFAULT_PORT; // ours, reuse
+  for (let p = DEFAULT_PORT + 1; p <= PORT_RANGE_END; p++) {
+    if (await portFree(p)) return p;
   }
-  return "stuck";
+  return 0;
 }
 
-// Launching through cmd's `start` swallows failures; spawn tells us if it broke.
-function launchDiscord(exe) {
-  try {
-    const child = spawn(exe, [`--remote-debugging-port=${PORT}`], {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: false
-    });
-    child.unref();
-    return true;
-  } catch (e) {
-    uiLog("[!] Failed to launch Discord: " + (e?.message || e));
-    return false;
-  }
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// One quick look at the debug port — is a usable Discord page already there?
-async function probeMainPage() {
+// ---------- CDP discovery ----------
+async function fetchTargets(port, timeoutMs = 2500) {
   try {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 2500);
-    const res = await fetch(`http://127.0.0.1:${PORT}/json`, { signal: ctl.signal });
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    const res = await fetch(`http://127.0.0.1:${port}/json`, { signal: ctl.signal });
     clearTimeout(timer);
-    const targets = await res.json();
-    return targets.find((t) => t.type === "page" && t.webSocketDebuggerUrl && /discord\.com\/(app|channels)/.test(t.url)) || null;
+    return await res.json();
   } catch (_) { return null; }
 }
 
-// Waits for the Discord window to show up on the debug port.
-// Reports progress so the app doesn't look frozen while it waits.
-async function waitForMainPage(timeoutMs = 90000) {
+const mainPageOf = (targets) =>
+  (targets || []).find((t) => t.type === "page" && t.webSocketDebuggerUrl && /discord\.com\/(app|channels)/.test(t.url)) || null;
+
+// Is a usable Discord already sitting on one of the ports we might have used?
+async function probeExisting() {
+  const ports = [];
+  const saved = rememberedPort();
+  if (saved) ports.push(saved);
+  if (!ports.includes(DEFAULT_PORT)) ports.push(DEFAULT_PORT);
+  for (const port of ports) {
+    const page = mainPageOf(await fetchTargets(port));
+    if (page) return { port, page };
+  }
+  return null;
+}
+
+async function waitForMainPage(port, timeoutMs = 90000) {
   const deadline = Date.now() + timeoutMs;
   let sawPort = false;
   let lastNotice = 0;
 
   while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/json`);
-      const targets = await res.json();
+    if (state.stopping) return null;
+    const targets = await fetchTargets(port, 2000);
+    const waited = Math.round((Date.now() - (deadline - timeoutMs)) / 1000);
+
+    if (targets) {
       if (!sawPort) {
         sawPort = true;
-        const pages = targets.filter((t) => t.type === "page").length;
-        say("l_portup", "ok", String(pages));
+        say("l_portup", "ok", String(targets.filter((t) => t.type === "page").length));
       }
-
-      const main = targets.find((t) => t.type === "page" && t.webSocketDebuggerUrl && /discord\.com\/(app|channels)/.test(t.url));
+      const main = mainPageOf(targets);
       if (main) return main;
-
       const loggedIn = targets.some((t) => t.type === "page" && /discord\.com/.test(t.url));
-      const waited = Math.round((Date.now() - (deadline - timeoutMs)) / 1000);
-      if (loggedIn && waited - lastNotice >= 15) {
-        lastNotice = waited;
-        say("l_waitlogin", "warn");
-      }
-    } catch (_) {
-      const waited = Math.round((Date.now() - (deadline - timeoutMs)) / 1000);
-      if (waited - lastNotice >= 10) {
-        lastNotice = waited;
-        say("l_waiting", "info", String(waited));
-      }
+      if (loggedIn && waited - lastNotice >= 15) { lastNotice = waited; say("l_waitlogin", "warn"); }
+    } else if (waited - lastNotice >= 10) {
+      lastNotice = waited;
+      say("l_waiting", "info", String(waited));
     }
     await sleep(1500);
   }
   return null;
 }
 
-function evalInPage(expression) {
-  const ws = state.ws;
-  if (!ws || ws.readyState !== WebSocket.OPEN) return -1;
-  ws.send(JSON.stringify({ id: ++state.msgId, method: "Runtime.evaluate", params: { expression, returnByValue: true } }));
-  return state.msgId;
+// ---------- killing / launching ----------
+function killDiscord() {
+  try {
+    execFileSync(sysExe("taskkill.exe"), ["/F", "/IM", "Discord.exe", "/T"], {
+      stdio: "pipe", windowsHide: true, timeout: 15000
+    });
+    return true;
+  } catch (_) { return false; }
 }
 
-function connect(target) {
+// Returns { ok, denied }.
+//
+// "denied" used to be decided by matching the words "Access is denied" in
+// taskkill's output. On a non-English Windows that output arrives in the OEM
+// codepage while it is read as UTF-8, so the match never fired and the hint
+// about administrator rights was never shown. Survival of the process after
+// several attempts is both language-independent and more honest.
+async function killDiscordAndWait(timeoutMs = 15000) {
+  const started = Date.now();
+  let attempt = 0;
+
+  while (Date.now() - started < timeoutMs) {
+    const pids = discordPids();
+    if (pids.length === 0) return { ok: true, denied: false };
+
+    attempt++;
+    killDiscord();
+    if (attempt > 2) {
+      for (const pid of pids) {
+        try {
+          execFileSync(sysExe("taskkill.exe"), ["/F", "/PID", String(pid), "/T"], {
+            stdio: "pipe", windowsHide: true, timeout: 10000
+          });
+        } catch (_) {}
+      }
+    }
+    await sleep(700);
+  }
+  const alive = discordPids().length > 0;
+  return { ok: !alive, denied: alive && !isElevated() };
+}
+
+function launchDiscord(exe, port) {
+  try {
+    const child = spawn(exe, [`--remote-debugging-port=${port}`], {
+      detached: true, stdio: "ignore", windowsHide: false
+    });
+    child.unref();
+    return true;
+  } catch (e) {
+    uiLog("[!] Failed to launch Discord: " + (e && e.message ? e.message : e));
+    return false;
+  }
+}
+
+// ---------- CDP session ----------
+function cdp(method, params, onResult) {
+  const ws = state.ws;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return 0;
+  const id = ++state.msgId;
+  if (onResult) state.pending.set(id, onResult);
+  try { ws.send(JSON.stringify({ id, method, params: params || {} })); }
+  catch (_) { state.pending.delete(id); return 0; }
+  return id;
+}
+function evalInPage(expression, onResult) {
+  return cdp("Runtime.evaluate", { expression, returnByValue: true }, onResult);
+}
+
+function injectEngine() {
+  if (state.injecting) return;
+  state.injecting = true;
+
+  const session = crypto.randomUUID();
+  state.session = session;
+
+  let code;
+  try {
+    code = fs.readFileSync(path.join(__dirname, "quest.js"), "utf8").replace("__ORB_SESSION__", session);
+  } catch (e) {
+    state.injecting = false;
+    fail("l_injectfail", "err", String((e && e.message) || e));
+    return;
+  }
+
+  say("l_injecting", "info");
+  evalInPage(code, (result) => {
+    const ex = result && result.exceptionDetails;
+    if (ex) {
+      state.injecting = false;
+      const why = (ex.exception && ex.exception.description) || ex.text || "unknown";
+      fail("l_injectfail", "err", String(why).split("\n")[0]);
+      return;
+    }
+    // Sending the script is not the same as it running. The engine reports its
+    // own session id back; anything else means we are not actually farming.
+    setTimeout(() => {
+      evalInPage(
+        `(window.__ORB__ && window.__ORB__.session === ${JSON.stringify(session)} && window.__ORB__.alive === true)`,
+        (r) => {
+          state.injecting = false;
+          if (r && r.result && r.result.value === true) {
+            state.injected = true;
+            state.lastEventAt = Date.now();
+            phase("farming");
+            say("l_injected_ok", "ok");
+          } else {
+            fail("l_injectdead", "err");
+          }
+        }
+      );
+    }, 3000);
+  });
+}
+
+function handleEngineEvent(e) {
+  state.lastEventAt = Date.now();
+  // Ignore leftovers from an evicted watcher.
+  if (e.s && state.session && e.s !== state.session) return;
+
+  switch (e.ev) {
+    case "started":
+      state.injected = true;
+      phase("farming");
+      break;
+    case "tally":
+      send("sniper:tally", { total: e.total, done: e.done, left: e.left, manual: e.manual });
+      return;
+    case "progress":
+      send("sniper:progress", { quest: e.quest, task: e.task, done: e.done, need: e.need, elapsed: e.elapsed });
+      return;
+    case "all_done":
+      send("sniper:done", { done: e.done, manual: e.manual });
+      break;
+    case "modules_failed":
+      send("sniper:event", e);
+      fail(null);
+      return;
+    case "crashed":
+      send("sniper:event", e);
+      fail(null);
+      return;
+    case "alive":
+      return;
+    default:
+      break;
+  }
+  send("sniper:event", e);
+}
+
+function connect(port, target) {
+  state.port = port;
+  state.target = target;
+  rememberPort(port);
+
   const ws = new WebSocket(target.webSocketDebuggerUrl, { perMessageDeflate: false });
   state.ws = ws;
   state.msgId = 0;
-  state.readinessIds.clear();
-  state.statusIds.clear();
-  state.tallyIds.clear();
-  state.doneIds.clear();
-  state.verifyIds.clear();
-  state.injectId = 0;
-  state.verified = false;
+  state.pending.clear();
   state.injected = false;
+  state.injecting = false;
 
   ws.on("open", () => {
+    cdp("Runtime.enable");
+    cdp("Page.enable");
+
     let attempts = 0;
-    const readyPoll = setInterval(() => {
-      attempts++;
-      if (state.injected || ws.readyState !== WebSocket.OPEN) { clearInterval(readyPoll); return; }
-      if (attempts > 60) {
-        clearInterval(readyPoll);
-        uiLog("[!] Webpack never became ready. Restart Discord and try again.");
-        phase("error");
-        state.running = false;
+    clearInterval(state.readyPoll);
+    state.readyPoll = setInterval(() => {
+      if (state.injected || state.injecting || ws.readyState !== WebSocket.OPEN) return;
+      if (++attempts > 60) {
+        clearInterval(state.readyPoll);
+        state.readyPoll = null;
+        fail("l_notready", "err");
         return;
       }
-      state.readinessIds.add(evalInPage("typeof webpackChunkdiscord_app !== 'undefined'"));
+      evalInPage("typeof webpackChunkdiscord_app !== 'undefined'", (r) => {
+        if (r && r.result && r.result.value === true) {
+          clearInterval(state.readyPoll);
+          state.readyPoll = null;
+          injectEngine();
+        }
+      });
     }, 2000);
   });
 
@@ -284,123 +516,81 @@ function connect(target) {
     let msg;
     try { msg = JSON.parse(data.toString()); } catch (_) { return; }
 
-    if (msg.id && state.readinessIds.has(msg.id)) {
-      state.readinessIds.delete(msg.id);
-      if (msg.result?.result?.value === true && !state.injected) {
-        state.injected = true;
-        phase("farming");
-        say("l_injecting", "info");
-        ws.send(JSON.stringify({ id: ++state.msgId, method: "Runtime.enable" }));
-        const questCode = fs.readFileSync(path.join(__dirname, "quest.js"), "utf8");
-        state.injectId = ++state.msgId;
-        ws.send(JSON.stringify({ id: state.injectId, method: "Runtime.evaluate", params: { expression: questCode, returnByValue: true } }));
-
-        // Sending the script is not the same as it running. Check that the
-        // watcher actually came alive instead of claiming success blindly.
-        setTimeout(() => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          state.verifyIds.add(evalInPage("window.__QUEST_WATCHER__ === true"));
-        }, 3000);
-
-        state.poll = setInterval(() => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          // Tag every request so the reply can't be mistaken for another one.
-          state.statusIds.add(evalInPage("window.__QUEST_STATUS__ || ''"));
-          state.tallyIds.add(evalInPage("window.__QUEST_TALLY__ || ''"));
-          state.doneIds.add(evalInPage("window.__QUEST_AUTO_DONE__ === true"));
-        }, 3000);
-      }
+    if (msg.id && state.pending.has(msg.id)) {
+      const cb = state.pending.get(msg.id);
+      state.pending.delete(msg.id);
+      try { cb(msg.result); } catch (_) {}
       return;
     }
 
     if (msg.method === "Runtime.consoleAPICalled") {
-      const args = (msg.params.args || []).map((a) => a.value ?? a.description ?? "").join(" ");
-      if (args.includes("[quest-auto]")) uiLog(args);
+      const args = (msg.params.args || []).map((a) => (a.value !== undefined ? a.value : a.description) ?? "").join(" ");
+      if (typeof args === "string" && args.startsWith(EVENT_TAG)) {
+        let payload;
+        try { payload = JSON.parse(args.slice(EVENT_TAG.length)); } catch (_) { return; }
+        handleEngineEvent(payload);
+      }
+      return;
     }
 
-    if (msg.method === "Runtime.exceptionThrown") {
-      const desc = msg.params.exceptionDetails?.exception?.description ?? msg.params.exceptionDetails?.text ?? "";
-      if (desc.includes("quest-auto")) uiLog("[!] " + desc.split("\n")[0]);
+    // The page reloaded (Discord updated itself, or the user hit Ctrl+R): the
+    // engine went with it, so put it back instead of pretending to farm.
+    if (msg.method === "Runtime.executionContextsCleared" || msg.method === "Page.loadEventFired") {
+      if (state.injected && !state.stopping) {
+        state.injected = false;
+        say("l_reinject", "warn");
+        setTimeout(() => { if (!state.stopping && state.ws === ws) injectEngine(); }, 4000);
+      }
+      return;
     }
   });
 
   ws.on("close", () => {
-    if (state.poll) { clearInterval(state.poll); state.poll = null; }
-    uiLog("[i] Debug connection closed.");
+    clearInterval(state.readyPoll);
+    state.readyPoll = null;
+    if (state.ws !== ws) return;
+    state.ws = null;
+    state.injected = false;
+    if (state.stopping || !state.running) return;
+    say("l_disconnected", "warn");
+    reconnect();
   });
 
-  ws.on("error", (e) => {
-    uiLog("[!] WebSocket error: " + e.message);
-  });
-
-  // status + done forwarding
-  let lastStatus = "";
-  let lastTally = "";
-  const handler = (data) => {
-    let msg;
-    try { msg = JSON.parse(data.toString()); } catch (_) { return; }
-    if (!msg.id || !msg.result) return;
-    const val = msg.result.result?.value;
-
-    if (state.tallyIds.delete(msg.id)) {
-      if (typeof val === "string" && val.startsWith("{") && val !== lastTally) {
-        lastTally = val;
-        try { send("sniper:tally", JSON.parse(val)); } catch (_) {}
-      }
-      return;
-    }
-
-    if (state.statusIds.delete(msg.id)) {
-      if (typeof val === "string" && val && val !== lastStatus) {
-        lastStatus = val;
-        send("sniper:status", val);
-      }
-      return;
-    }
-
-    if (state.injectId && msg.id === state.injectId) {
-      state.injectId = 0;
-      const ex = msg.result.exceptionDetails;
-      if (ex) {
-        const why = ex.exception?.description || ex.text || "unknown";
-        say("l_injectfail", "err", String(why).split("\n")[0]);
-        phase("error");
-      }
-      return;
-    }
-
-    if (state.verifyIds.delete(msg.id)) {
-      if (val === true) {
-        state.verified = true;
-        say("l_injected_ok", "ok");
-      } else {
-        say("l_injectdead", "err");
-        phase("error");
-      }
-      return;
-    }
-
-    if (state.doneIds.delete(msg.id)) {
-      if (val === true) {
-        send("sniper:done", true);
-        if (state.poll) { clearInterval(state.poll); state.poll = null; }
-      }
-      return;
-    }
-  };
-  ws.on("message", handler);
+  ws.on("error", (e) => uiLog("[!] WebSocket error: " + e.message));
 }
 
-function portInUse(port) {
-  return new Promise((resolve) => {
-    const sock = net.connect({ port, host: "127.0.0.1" });
-    const done = (v) => { try { sock.destroy(); } catch (_) {} resolve(v); };
-    sock.on("connect", () => done(true));
-    sock.on("error", () => done(false));
-    setTimeout(() => done(false), 1500);
-  });
+// Discord updates itself regularly, and an update restarts the client. That
+// used to end the session silently with the UI still showing "farming".
+async function reconnect() {
+  phase("waiting");
+  for (let i = 0; i < RECONNECT_TRIES; i++) {
+    if (state.stopping) return;
+    await sleep(3000);
+    const found = await probeExisting();
+    if (found) {
+      say("l_reconnected", "ok");
+      phase("connecting");
+      connect(found.port, found.page);
+      return;
+    }
+  }
+  fail("l_lost", "err");
 }
 
+// Catches the case where the socket stays open but the engine is gone.
+function startWatchdog() {
+  clearInterval(state.watchdog);
+  state.watchdog = setInterval(() => {
+    if (!state.running || state.stopping || !state.injected) return;
+    if (Date.now() - state.lastEventAt < ALIVE_TIMEOUT_MS) return;
+    say("l_reinject", "warn");
+    state.injected = false;
+    state.lastEventAt = Date.now();
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) injectEngine();
+  }, 15000);
+}
+
+// ---------- preflight ----------
 function canReachDiscord() {
   return new Promise((resolve) => {
     const ctl = new AbortController();
@@ -411,19 +601,6 @@ function canReachDiscord() {
   });
 }
 
-function settingsWritable() {
-  try {
-    const dir = path.join(os.homedir(), "AppData", "Roaming", "discord");
-    fs.mkdirSync(dir, { recursive: true });
-    const probe = path.join(dir, ".orbsniper-probe");
-    fs.writeFileSync(probe, "1");
-    fs.unlinkSync(probe);
-    return true;
-  } catch (_) { return false; }
-}
-
-// Checks everything we need before launching.
-// Returns the Discord.exe path, or null when we can't continue.
 async function preflight() {
   say("chk_start", "info");
   let fatal = false;
@@ -436,164 +613,135 @@ async function preflight() {
   if (settingsWritable()) say("chk_settings_ok", "ok");
   else { say("chk_settings_fail", "err"); fatal = true; }
 
-  // Being busy is only a problem when something other than Discord holds it.
-  const holder = pidOnPort(PORT);
-  if (!holder) {
-    say("chk_port_free", "ok", String(PORT));
-  } else {
-    const name = processName(holder);
-    if (/discord/i.test(name)) {
-      say("chk_port_busy", "warn", String(PORT));
-    } else {
-      say("chk_port_foreign", "err", String(PORT), name || String(holder));
-      fatal = true;
-    }
-  }
+  const port = await choosePort();
+  if (!port) { say("chk_port_none", "err"); fatal = true; }
+  else if (port === DEFAULT_PORT) say("chk_port_free", "ok", String(port));
+  else say("chk_port_alt", "ok", String(port));   // taken by someone else: not our problem any more
 
-  const online = await canReachDiscord();
-  if (online) say("chk_net_ok", "ok");
+  if (await canReachDiscord()) say("chk_net_ok", "ok");
   else { say("chk_net_fail", "err"); fatal = true; }
 
   if (fatal) { say("chk_stop", "err"); return null; }
   say("chk_pass", "ok");
-  return exe;
+  return { exe, port };
 }
 
+// ---------- main flow ----------
 async function runFlow() {
   if (state.running) return;
-  state.running = true;
-  send("sniper:running", true);
-  try {
-    const exe = await preflight();
-    if (!exe) {
-      phase("error");
-      state.running = false;
-      send("sniper:running", false);
-      return;
-    }
+  state.stopping = false;
+  setRunning(true);
+  startWatchdog();
 
-    // If Discord is already up on the debug port, skip the restart entirely.
-    // Faster, and avoids the whole class of "it didn't come back up" failures.
-    const alive = await probeMainPage();
-    if (alive) {
+  try {
+    // Fast path first: a Discord already listening on a port we know needs no
+    // restart at all, which skips every failure mode below.
+    const existing = await probeExisting();
+    if (existing) {
       say("l_already", "ok");
       phase("connecting");
-      connect(alive);
+      connect(existing.port, existing.page);
       return;
     }
 
-    phase("closing");
+    const pre = await preflight();
+    if (!pre) { fail(null); return; }
+    const { exe, port } = pre;
 
-    const portState = await freePort(PORT);
-    if (portState === "foreign") {
-      say("chk_port_foreign", "err", String(PORT));
-      phase("error");
-      state.running = false;
-      send("sniper:running", false);
-      return;
+    // Only restart Discord when it is actually running without the port. If it
+    // is closed we just start it, and nothing has to be killed.
+    if (discordPids().length > 0) {
+      phase("closing");
+      say("l_closing", "info");
+      const closed = await killDiscordAndWait();
+      if (!closed.ok) {
+        say(closed.denied ? "l_killdenied" : "l_killfail", "err");
+        say("l_manualcmd", "warn", manualCommand(exe, port));
+        fail(null);
+        return;
+      }
+      say("l_closed", "ok");
     }
-    if (portState === "killed") say("l_portfreed", "ok", String(PORT));
 
-    say("l_closing", "info");
-    const closed = await killDiscordAndWait();
-    if (!closed.ok) {
-      if (closed.denied && !isElevated()) say("l_killdenied", "err");
-      else say("l_killfail", "err");
-      say("l_manualcmd", "warn", manualCommand(exe));
-      phase("error");
-      state.running = false;
-      send("sniper:running", false);
-      return;
-    }
-    say("l_closed", "ok");
     enableDevTools();
 
     phase("launching");
     say("l_launching", "info");
-    if (!launchDiscord(exe)) {
-      phase("error");
-      state.running = false;
-      send("sniper:running", false);
-      return;
-    }
+    if (!launchDiscord(exe, port)) { fail(null); return; }
 
     phase("waiting");
-    const target = await waitForMainPage();
+    const target = await waitForMainPage(port);
     if (!target) {
+      if (state.stopping) return;
       say("l_nowindow_help", "err");
-      say("l_manualcmd", "warn", manualCommand(exe));
-      phase("error");
-      state.running = false;
-      send("sniper:running", false);
+      say("l_manualcmd", "warn", manualCommand(exe, port));
+      fail(null);
       return;
     }
 
     phase("connecting");
-    connect(target);
+    connect(port, target);
   } catch (e) {
-    uiLog("[!] Fatal: " + (e?.message || e));
-    phase("error");
-    state.running = false;
-    send("sniper:running", false);
+    uiLog("[!] Fatal: " + ((e && e.message) || e));
+    fail(null);
   }
 }
 
-// ---------- IPC ----------
-function stopFlow() {
-  try { evalInPage("window.__QUEST_STOP__ = true"); } catch (_) {}
-  if (state.poll) { clearInterval(state.poll); state.poll = null; }
-  if (state.ws) {
-    try { state.ws.removeAllListeners(); state.ws.close(); } catch (_) {}
-    state.ws = null;
+// ---------- stop / repair ----------
+function stopEngine(tellEngine) {
+  if (tellEngine) {
+    try { evalInPage("window.__ORB__ && (window.__ORB__.stop = true)"); } catch (_) {}
   }
+  clearInterval(state.readyPoll);
+  state.readyPoll = null;
+  const ws = state.ws;
+  state.ws = null;
+  if (ws) {
+    try { ws.removeAllListeners(); } catch (_) {}
+    // Give the stop flag a moment to reach the page before dropping the socket.
+    setTimeout(() => { try { ws.close(); } catch (_) {} }, tellEngine ? 300 : 0);
+  }
+  state.pending.clear();
   state.injected = false;
-  state.readinessIds.clear();
-  state.statusIds.clear();
-  state.tallyIds.clear();
-  state.doneIds.clear();
-  state.verifyIds.clear();
-  state.injectId = 0;
-  state.verified = false;
-  state.running = false;
-  send("sniper:running", false);
+  state.injecting = false;
+  state.session = "";
 }
 
-ipcMain.handle("sniper:start", () => { runFlow(); });
+function stopFlow() {
+  state.stopping = true;
+  clearInterval(state.watchdog);
+  state.watchdog = null;
+  stopEngine(true);
+  setRunning(false);
+}
 
-// Hard reset for when things are stuck: drop the connection, kill every Discord
-// process, free the debug port, then start over from scratch.
+ipcMain.handle("sniper:start", () => { runFlow(); return true; });
+
 ipcMain.handle("sniper:repair", async () => {
   say("l_repair_start", "info");
   stopFlow();
 
-  const port = await freePort(PORT);
-  if (port === "foreign") {
-    say("chk_port_foreign", "err", String(PORT));
-    phase("error");
-    return false;
-  }
-  if (port === "killed") say("l_portfreed", "ok", String(PORT));
-
   const closed = await killDiscordAndWait(20000);
   if (!closed.ok) {
-    if (closed.denied && !isElevated()) say("l_killdenied", "err");
-    else say("l_killfail", "err");
+    say(closed.denied ? "l_killdenied" : "l_killfail", "err");
     const exe = findDiscordExe();
-    if (exe) say("l_manualcmd", "warn", manualCommand(exe));
+    if (exe) say("l_manualcmd", "warn", manualCommand(exe, rememberedPort() || DEFAULT_PORT));
     phase("error");
     return false;
   }
 
   say("l_repair_done", "ok");
   await sleep(800);
+  state.stopping = false;
   runFlow();
   return true;
 });
+
 ipcMain.handle("sniper:stop", () => { stopFlow(); return true; });
-ipcMain.handle("sniper:skip", () => { evalInPage("window.__QUEST_SKIP__ = true"); });
-ipcMain.handle("donate:copy", () => { clipboard.writeText(DONATE_ADDRESS); return true; });
+ipcMain.handle("sniper:skip", () => { evalInPage("window.__ORB__ && (window.__ORB__.skip = true)"); return true; });
 ipcMain.handle("app:copy", (_e, text) => { clipboard.writeText(String(text || "")); return true; });
 ipcMain.handle("app:version", () => VERSION);
+ipcMain.handle("app:donateAddress", () => DONATE_ADDRESS);
 ipcMain.handle("app:open", (_e, url) => {
   const u = String(url || "");
   if (!/^https:\/\//i.test(u)) return false;   // https only
