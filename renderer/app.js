@@ -202,7 +202,19 @@ function nowStamp() {
   return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-function pushLine(text, level) {
+// Last line of defence for the journal. Whatever an engine or Discord hands
+// us, a console line stays a console line: no markup, no page-sized dumps.
+const LINE_LIMIT = 220;
+function tidy(text) {
+  let x = String(text);
+  if (/<(!doctype|html)[\s>]/i.test(x)) return t("l_errpage");
+  if (/<[a-z][^>]*>/i.test(x)) x = x.replace(/<[^>]*>/g, " ");
+  x = x.replace(/\s+/g, " ").trim();
+  return x.length > LINE_LIMIT ? x.slice(0, LINE_LIMIT) + "…" : x;
+}
+
+function pushLine(raw, level) {
+  const text = tidy(raw);
   if (!text) return;
   const box = $("log");
   $("cn-body").classList.add("live");

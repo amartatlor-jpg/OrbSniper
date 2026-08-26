@@ -373,6 +373,64 @@ async function runEngine(opts) {
     }
   });
 
+  await check("a client that throws on 404 is still probed correctly", () => {
+    // Discord's real API module rejects on a bad status instead of resolving,
+    // so the retry has to work from the catch branch too - and a genuine
+    // error (403, rate limit) must still reach the caller untouched.
+    const HTML = '<!DOCTYPE html><html><head><title>Page Not Found</title></head></html>';
+    const src = questCode.slice(questCode.indexOf("let apiStyle"), questCode.indexOf("const apiPost"));
+
+    const build = (api) => {
+      const ctx = { api, module: {} };
+      vm.createContext(ctx);
+      vm.runInContext(src + "\nmodule.post = (u, b) => request('post', u, b);", ctx);
+      return ctx.module.post;
+    };
+
+    const post = build({
+      async post(a, b) {
+        if (typeof a !== "string") throw { status: 404, body: HTML };
+        return { status: 200, body: { url: a, body: b } };
+      }
+    });
+    return post("/quests/1/enroll", { location: 11 }).then((res) => {
+      assert(res.status === 200, "the throwing 404 was not retried the other way");
+      assert(res.body.url === "/quests/1/enroll", "wrong url reached the API");
+
+      const denied = build({ async post() { throw { status: 403, body: { message: "no" } } } });
+      return denied("/quests/1/enroll", {}).then(
+        () => { throw new Error("a real 403 was swallowed instead of raised"); },
+        (e) => assert(e.status === 403, "the caller lost the real error: " + JSON.stringify(e))
+      );
+    });
+  });
+
+  console.log("\njournal");
+  await check("the console caps every line, whatever the engine sends", () => {
+    // Independent of quest.js: if a future Discord change floods us again,
+    // the journal itself must still print a line, not a web page.
+    const appSrc = read("renderer/app.js");
+    const src = appSrc.slice(appSrc.indexOf("const LINE_LIMIT"), appSrc.indexOf("function pushLine"));
+    assert(src, "the journal has no length guard at all");
+
+    const ctx = { module: {}, t: (k) => k };
+    vm.createContext(ctx);
+    vm.runInContext(src + "\nmodule.tidy = tidy;", ctx);
+
+    const page = '<!DOCTYPE html><html lang="ru"><head><title>Page Not Found</title></head>' +
+                 "<body>" + "<div>filler</div>".repeat(500) + "</body></html>";
+    assert(ctx.module.tidy(page) === "l_errpage", "an error page is not recognised as one");
+    assert(ctx.module.tidy("<b>bold</b> claim") === "bold claim", "markup is not stripped");
+    assert(ctx.module.tidy("x".repeat(4000)).length <= 240, "a long line is not truncated");
+    assert(ctx.module.tidy("plain message") === "plain message", "an ordinary line was mangled");
+  });
+
+  await check("every language can name an error page", () => {
+    const { I18N, LANGS } = loadI18N();
+    const missing = LANGS.filter((l) => !I18N[l.code] || !I18N[l.code].l_errpage);
+    assert(missing.length === 0, "l_errpage missing in: " + missing.map((l) => l.code).join(", "));
+  });
+
   console.log(`\n${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);
 })();
