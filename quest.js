@@ -43,6 +43,8 @@
   const ENROLL_COOLDOWN_MS = 3 * 60 * 1000; // wait before re-trying a failed accept
   const CLAIM_COOLDOWN_MS = 5 * 60 * 1000;  // wait before re-trying a failed claim
   const ALIVE_INTERVAL_MS = 30 * 1000;      // proof-of-life for the launcher
+  const QUEST_RETRY_MS = 60 * 1000;         // wait before re-working a stalled quest
+  const MAX_QUEST_TRIES = 4;                // then stop and say so
 
   // The launcher re-injects us if these stop arriving, so they must keep coming
   // even while a quest is running.
@@ -329,7 +331,7 @@
         const tc = quest.config.taskConfig || quest.config.taskConfigV2;
         const taskName = taskOf(quest);
         const taskData = tc && tc.tasks && tc.tasks[taskName];
-        if (!taskData) { emit({ ev: "quest_skipped", quest: questName, why: "unsupported" }); resolve(); return; }
+        if (!taskData) { emit({ ev: "quest_skipped", quest: questName, why: "unsupported" }); resolve("unsupported"); return; }
 
         const pid = Math.floor(Math.random() * 30000) + 1000;
         const gameName = quest.config.application?.name ?? quest.config.messages?.gameTitle ?? "";
@@ -354,13 +356,23 @@
           settled = true;
           for (const fn of cleanups) { try { fn(); } catch (_) {} }
           ORB.skip = false;
-          if (reason === "done") emit({ ev: "quest_done", quest: questName });
-          else emit({ ev: "quest_skipped", quest: questName, why: reason });
-          claimReward(quest).catch(() => {}).then(() => resolve());
+          // Claiming used to run on every outcome. A quest that stalled has no
+          // reward waiting, so those calls only burned the three claim tries
+          // and ended up telling the user to collect a prize that is not there.
+          if (reason !== "done") {
+            emit({ ev: "quest_skipped", quest: questName, why: reason });
+            resolve(reason);
+            return;
+          }
+          emit({ ev: "quest_done", quest: questName });
+          claimReward(quest).catch(() => {}).then(() => resolve(reason));
         }
 
+        // These three used to collapse into one word, so the caller could not
+        // tell "the user pressed skip" from "this quest went nowhere".
         const stopped = () => {
-          if (ORB.skip || ORB.stop) return "skip";
+          if (ORB.stop) return "stop";
+          if (ORB.skip) return "skip";
           if (Date.now() - lastProgressAt > STALL_TIMEOUT_MS) return "stalled";
           return null;
         };
@@ -545,6 +557,9 @@
 
     // ---------- watcher loop ----------
     const processed = new Set();
+    const retryAt = new Map();      // quest id -> when it may be tried again
+    const questTries = new Map();   // quest id -> how often we have tried
+    const needsHand = new Set();    // quests we could not finish ourselves
     const enrollFailedAt = new Map();
     const claimFailedAt = new Map();
     const notifiedUnsupported = new Set();
@@ -552,13 +567,17 @@
     let announcedIdle = false;
     let announcedDone = false;
 
+    // Counts describe the account, never our own bookkeeping. "left" used to
+    // subtract everything we had filed away, so a quest we abandoned vanished
+    // from the count and the app announced that everything was finished.
     function tally(all) {
       const doable = all.filter((q) => taskOf(q));
       return {
         total: doable.length,
         done: doable.filter((q) => q.userStatus?.claimedAt).length,
-        left: doable.filter((q) => !processed.has(q.id) && !q.userStatus?.completedAt).length,
-        manual: doable.filter((q) => manualClaim.has(q.id) && !q.userStatus?.claimedAt).length
+        left: doable.filter((q) => !q.userStatus?.completedAt).length,
+        manual: doable.filter((q) =>
+          (manualClaim.has(q.id) || needsHand.has(q.id)) && !q.userStatus?.claimedAt).length
       };
     }
 
@@ -589,6 +608,7 @@
         if (ORB.stop) return tally(all);
         if (processed.has(q.id)) continue;
         if (q.userStatus?.completedAt) continue;
+        if (now < (retryAt.get(q.id) ?? 0)) continue;
 
         if (!taskOf(q)) {
           if (!notifiedUnsupported.has(q.id)) {
@@ -611,9 +631,30 @@
 
         workedThisSession = true;
         announcedDone = false;
-        await processQuest(quest);
-        processed.add(quest.id);
+        const outcome = await processQuest(quest);
         ORB.skip = false;
+
+        if (ORB.stop || outcome === "stop") return tally(all);
+
+        if (outcome === "done" || outcome === "skip" || outcome === "unsupported") {
+          // Finished, or the user asked us to move past it.
+          processed.add(quest.id);
+        } else {
+          // Stalled, timed out or errored. The quest is not finished, so
+          // filing it away would strand it for the rest of the session -
+          // which is exactly how unfinished quests used to pile up while the
+          // app sat there looking busy.
+          const tries = (questTries.get(quest.id) ?? 0) + 1;
+          questTries.set(quest.id, tries);
+          if (tries >= MAX_QUEST_TRIES) {
+            processed.add(quest.id);
+            needsHand.add(quest.id);
+            emit({ ev: "quest_gaveup", quest: nameOf(quest), why: outcome, tries });
+          } else {
+            retryAt.set(quest.id, Date.now() + QUEST_RETRY_MS);
+            emit({ ev: "quest_later", quest: nameOf(quest), why: outcome, tries });
+          }
+        }
       }
 
       return tally(all);

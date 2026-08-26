@@ -96,6 +96,8 @@ const EVENTS = {
     if (e.why === "unsupported") return ["l_unsupported", "warn", e.quest];
     return ["l_skipped", "warn", e.quest];
   },
+  quest_later:   (e) => ["l_later", "warn", e.quest],
+  quest_gaveup:  (e) => ["l_gaveup", "err", e.quest, e.tries],
   claiming:      (e) => ["l_claiming", "info", e.quest],
   claimed:       (e) => ["l_claimed", "ok", e.quest],
   claim_blocked: (e) => ["l_claimblocked", "warn", e.quest, e.why],

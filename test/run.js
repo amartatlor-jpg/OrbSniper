@@ -46,16 +46,16 @@ function grabFunction(source, name) {
 // the old engine hardcoded. If the shape-based lookup works, the minified
 // names are irrelevant - which is the whole point of the change.
 // A minimal quest of the kind these tests care about: one video task.
-function videoQuest(id, name) {
+function videoQuest(id, name, userStatus, target) {
   return {
     id,
     config: {
       expiresAt: "2099-01-01T00:00:00Z",
       messages: { questName: name },
       application: { id: "app-" + id, name: name },
-      taskConfig: { tasks: { WATCH_VIDEO: { target: 5 } } }
+      taskConfig: { tasks: { WATCH_VIDEO: { target: target == null ? 5 : target } } }
     },
-    userStatus: null
+    userStatus: userStatus || null
   };
 }
 
@@ -137,7 +137,7 @@ async function runEngine(opts) {
   const src = read("quest.js").replace("__ORB_SESSION__", "test-session");
   vm.runInContext(src, ctx, { filename: "quest.js" });
 
-  await sleep(250);
+  await sleep((opts && opts.wait) || 250);
   if (sandbox.window.__ORB__) sandbox.window.__ORB__.stop = true;
   await sleep(50);
   return { events, sandbox };
@@ -411,6 +411,46 @@ async function runEngine(opts) {
       assert(!/<[a-z!]/i.test(out), "markup leaked into the message: " + out.slice(0, 80));
       assert(out.length <= 200, "message is " + out.length + " chars - an error page would flood the log");
     }
+  });
+
+  await check("the count of what is left describes the account, not our notes", async () => {
+    // One quest claimed, one still to do. "left" used to be computed from the
+    // set of quests we had already handled, so anything we gave up on stopped
+    // being counted and the app announced that everything was finished.
+    const quests = new Map([
+      ["q1", videoQuest("q1", "done one", { enrolledAt: "x", completedAt: "x", claimedAt: "x" })],
+      ["q2", videoQuest("q2", "todo one", null, 0)]
+    ]);
+    const { events } = await runEngine({ quests, wait: 3000 });
+    const last = events.filter((e) => e.ev === "tally").pop();
+    assert(last, "no tally was ever produced");
+    assert(last.total === 2, "total was " + last.total + ", expected 2");
+    assert(last.done === 1, "done was " + last.done + ", expected 1");
+    assert(last.left === 1, "left was " + last.left + ", expected 1 - an unfinished quest went missing");
+    assert(!events.some((e) => e.ev === "all_done"), "announced that everything was finished");
+  });
+
+  await check("a quest that did not finish is not filed away as if it had", () => {
+    // The line that used to sit here marked every quest handled the moment
+    // processQuest returned, whatever the outcome.
+    const tail = questCode.slice(questCode.indexOf("const outcome = await processQuest"));
+    assert(tail, "processQuest result is not captured at all");
+    const upToNextLoop = tail.slice(0, 1200);
+    assert(/outcome === "done"/.test(upToNextLoop),
+      "the outcome is captured but never checked before filing the quest away");
+    assert(/retryAt\.set/.test(upToNextLoop),
+      "a quest that did not finish gets no second chance");
+    assert(!/^\s*processed\.add\(quest\.id\);\s*$/m.test(upToNextLoop.split("if (outcome")[0]),
+      "the quest is still filed away unconditionally");
+  });
+
+  await check("a stalled quest does not spend its claim tries", () => {
+    const body = questCode.slice(questCode.indexOf("function settle(reason)"));
+    const upToEnd = body.slice(0, body.indexOf("const stopped"));
+    const claimAt = upToEnd.indexOf("claimReward");
+    const guardAt = upToEnd.indexOf('reason !== "done"');
+    assert(guardAt !== -1, "settle no longer separates a finished quest from a stalled one");
+    assert(claimAt > guardAt, "claiming still runs before the outcome is checked");
   });
 
   console.log("\njournal");
