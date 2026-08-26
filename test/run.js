@@ -45,6 +45,20 @@ function grabFunction(source, name) {
 // Fake webpack registry using export names that are deliberately NOT the ones
 // the old engine hardcoded. If the shape-based lookup works, the minified
 // names are irrelevant - which is the whole point of the change.
+// A minimal quest of the kind these tests care about: one video task.
+function videoQuest(id, name) {
+  return {
+    id,
+    config: {
+      expiresAt: "2099-01-01T00:00:00Z",
+      messages: { questName: name },
+      application: { id: "app-" + id, name: name },
+      taskConfig: { tasks: { WATCH_VIDEO: { target: 5 } } }
+    },
+    userStatus: null
+  };
+}
+
 function fakeDiscord(opts) {
   opts = opts || {};
   const store = Object.assign(
@@ -54,7 +68,29 @@ function fakeDiscord(opts) {
   const flux = Object.create({ dispatch() {}, subscribe() {}, unsubscribe() {} });
 
   const modules = {
-    a1: { exports: { zZ: { get() {}, post() {}, put() {}, patch() {} } } },
+    // Decoy listed first on purpose: same four verbs, but it talks to the web
+    // app, so every answer is a page. Picking it is the bug this guards.
+    a0: { exports: { yY: {
+      get() { return Promise.resolve({ status: 200, body: "<!DOCTYPE html><html></html>" }); },
+      post() { return Promise.resolve({ status: 200, body: "<!DOCTYPE html><html></html>" }); },
+      put() {}, patch() {}
+    } } },
+    // The real client. opts.positional makes it accept only (url, {body}),
+    // the shape newer Discord builds use.
+    a1: { exports: { zZ: {
+      get(a) {
+        const url = typeof a === "string" ? a : (a && a.url);
+        if (opts.positional && typeof a !== "string") return Promise.reject({ status: 404, body: "<!doctype html>" });
+        if (opts.apiBroken) return Promise.resolve({ status: 200, body: "<!DOCTYPE html><html></html>" });
+        if (url === "/users/@me") return Promise.resolve({ status: 200, body: { id: "42" } });
+        return Promise.resolve({ status: 200, body: {} });
+      },
+      post(a) {
+        if (opts.positional && typeof a !== "string") return Promise.reject({ status: 404, body: "<!doctype html>" });
+        return Promise.resolve({ status: 200, body: {} });
+      },
+      put() {}, patch() {}
+    } } },
     a2: { exports: { qQ7: flux } },
     a3: { exports: { Wp: store } },
     // decoy: has getQuest but no quest map, must not win
@@ -335,28 +371,32 @@ async function runEngine(opts) {
       "the apiPost/apiGet wrappers are missing");
   });
 
-  await check("a wrong call shape is retried with the other one", async () => {
-    // Two fake clients, one per signature. Whichever we guess wrong must be
-    // detected by the 404 HTML page and retried the other way round.
-    const HTML = '<!DOCTYPE html><html><head><title>Page Not Found | Discord</title></head></html>';
-    const src = questCode.slice(questCode.indexOf("let apiStyle"), questCode.indexOf("const apiPost"));
+  await check("the API client is chosen by asking it, not by its shape", async () => {
+    // A decoy with the same four verbs is scanned first. If shape alone were
+    // trusted, the engine would send every quest to the web app and read its
+    // pages as success.
+    const quests = new Map([["q1", videoQuest("q1", "AION 2")]]);
+    const { events: evs } = await runEngine({ quests });
+    assert(evs.some((e) => e.ev === "started"), "engine never started with a decoy API present");
+    assert(!evs.some((e) => e.ev === "api_unusable"), "the real client was rejected");
+    // The decoy answers every call with a page. Only the real client can turn
+    // an enrol into an acceptance, so this is what separates them.
+    assert(evs.some((e) => e.ev === "accepted"), "the decoy won: nothing was ever really accepted");
+  });
 
-    for (const shape of ["object", "positional"]) {
-      const api = {
-        async post(a, b) {
-          const objectCall = typeof a !== "string";
-          if ((shape === "object") !== objectCall) return { status: 404, body: HTML };
-          return { status: 200, body: { ok: true, url: objectCall ? a.url : a } };
-        }
-      };
-      const ctx = { api, module: {} };
-      vm.createContext(ctx);
-      vm.runInContext(src + "\nmodule.post = (u, b) => request('post', u, b);", ctx);
+  await check("a client that only takes (url, {body}) still works", async () => {
+    const { events: evs } = await runEngine({ positional: true });
+    assert(evs.some((e) => e.ev === "started"), "the newer call shape was never found");
+    assert(!evs.some((e) => e.ev === "api_unusable"), "gave up on a client that does work");
+  });
 
-      const res = await ctx.module.post("/quests/1/enroll", { location: 11 });
-      assert(res.status === 200, shape + " client: wrapper never found a working shape");
-      assert(res.body.url === "/quests/1/enroll", shape + " client: wrong url reached the API");
-    }
+  await check("an API that only answers pages is reported, not used", async () => {
+    // The failure that made quests look accepted while nothing reached the
+    // account. Silence here is worse than an error.
+    const { events: evs } = await runEngine({ apiBroken: true });
+    assert(evs.some((e) => e.ev === "api_unusable"), "a useless API was accepted as working");
+    assert(!evs.some((e) => e.ev === "accepted" || e.ev === "claimed"),
+      "reported progress through an API that cannot work");
   });
 
   await check("an error page never reaches the console", () => {
@@ -371,38 +411,6 @@ async function runEngine(opts) {
       assert(!/<[a-z!]/i.test(out), "markup leaked into the message: " + out.slice(0, 80));
       assert(out.length <= 200, "message is " + out.length + " chars - an error page would flood the log");
     }
-  });
-
-  await check("a client that throws on 404 is still probed correctly", () => {
-    // Discord's real API module rejects on a bad status instead of resolving,
-    // so the retry has to work from the catch branch too - and a genuine
-    // error (403, rate limit) must still reach the caller untouched.
-    const HTML = '<!DOCTYPE html><html><head><title>Page Not Found</title></head></html>';
-    const src = questCode.slice(questCode.indexOf("let apiStyle"), questCode.indexOf("const apiPost"));
-
-    const build = (api) => {
-      const ctx = { api, module: {} };
-      vm.createContext(ctx);
-      vm.runInContext(src + "\nmodule.post = (u, b) => request('post', u, b);", ctx);
-      return ctx.module.post;
-    };
-
-    const post = build({
-      async post(a, b) {
-        if (typeof a !== "string") throw { status: 404, body: HTML };
-        return { status: 200, body: { url: a, body: b } };
-      }
-    });
-    return post("/quests/1/enroll", { location: 11 }).then((res) => {
-      assert(res.status === 200, "the throwing 404 was not retried the other way");
-      assert(res.body.url === "/quests/1/enroll", "wrong url reached the API");
-
-      const denied = build({ async post() { throw { status: 403, body: { message: "no" } } } });
-      return denied("/quests/1/enroll", {}).then(
-        () => { throw new Error("a real 403 was swallowed instead of raised"); },
-        (e) => assert(e.status === 403, "the caller lost the real error: " + JSON.stringify(e))
-      );
-    });
   });
 
   console.log("\njournal");

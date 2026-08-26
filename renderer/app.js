@@ -85,7 +85,11 @@ const EVENTS = {
   accepted:      (e) => ["l_accepted", "ok", e.quest],
   accept_failed: (e) => ["l_acceptfail", "warn", e.quest, e.why],
   captcha:       (e) => [e.at === "accept" ? "l_captcha_accept" : "l_captcha_claim", "warn", e.quest],
-  quest_start:   (e) => (e.game ? ["l_playing", "info", e.quest, e.game] : ["l_qstart", "info", e.quest]),
+  // Only a play/stream task is a game being faked. Saying "pretending to
+  // play" while watching a video described the wrong thing entirely.
+  quest_start:   (e) => (e.game && /^(PLAY|STREAM)/.test(e.task || "")
+                          ? ["l_playing", "info", e.quest, e.game]
+                          : ["l_qstart", "info", e.quest]),
   quest_done:    (e) => ["l_completed", "ok", e.quest],
   quest_skipped: (e) => {
     if (e.why === "stalled") return ["l_stalled", "warn", e.quest];
@@ -102,6 +106,7 @@ const EVENTS = {
   scan_error:    (e) => ["l_scanerror", "err", e.why],
   api_retry:     (e) => ["l_apiretry", "warn", e.quest, e.why],
   modules_failed:()  => ["l_nomodules", "err"],
+  api_unusable:  ()  => ["l_noapi", "err"],
   crashed:       (e) => ["l_fatal", "err", e.why],
   stopped:       ()  => ["l_stopped", "info"]
 };
@@ -121,7 +126,7 @@ function onEngineEvent(e) {
     $("facts").hidden = false;
     $("bar").hidden = true;
   }
-  if (e.ev === "modules_failed" || e.ev === "crashed") {
+  if (e.ev === "modules_failed" || e.ev === "api_unusable" || e.ev === "crashed") {
     setPhase("error");
   }
 

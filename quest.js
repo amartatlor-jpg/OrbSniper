@@ -105,8 +105,13 @@
       return true;
     };
 
+    // Many Discord modules carry get/post/put/patch, so every match is kept
+    // and the real API client is picked later by asking it a question.
+    const apiCandidates = [];
+
     const consider = (obj) => {
       if (!obj) return;
+      if (hasAll(obj, need.api) && apiCandidates.indexOf(obj) === -1) apiCandidates.push(obj);
       for (const key in need) {
         if (found[key]) continue;
         if (hasAll(obj, need[key])) found[key] = obj;
@@ -153,47 +158,60 @@
       }
     }
 
-    const api = found.api;
-
-    // Discord changed the shape of its internal API module between client
-    // builds: newer ones take (url, {body}) where older ones took ({url, body}).
-    // Handing the object form to a new client stringifies it into the request
-    // path, and Discord answers with its 404 HTML page. Probe both shapes once,
-    // then stay with whichever the running client accepts.
-    let apiStyle = null;   // "object" | "positional"
-
-    function isErrorPage(res) {
-      const b = res?.body;
-      if (typeof b === "string" && /^\s*<(!doctype|html)/i.test(b)) return true;
-      return res?.status === 404;
+    // Only these three are required for any quest at all. The rest gate
+    // individual quest types and are reported per quest instead of killing the
+    // whole run.
+    const missing = ["api", "FluxDispatcher", "QuestsStore"].filter((k) => !found[k]);
+    if (missing.length) {
+      die("modules_failed", { missing: missing.join(", ") });
+      return;
     }
 
-    async function request(method, url, body) {
-      const styles = apiStyle ? [apiStyle] : ["object", "positional"];
-      let last = null;
+    // Shape alone cannot identify the API client. Several modules expose the
+    // same four verbs but send the request to discord.com itself, where the
+    // web app answers with a page: a 404 for an unknown path, a 200 HTML
+    // document for a known one. That second case is the dangerous one - it
+    // reads as success, so quests looked accepted and rewards looked claimed
+    // while nothing at all reached the account.
+    //
+    // So each candidate is asked a harmless question, and only one that
+    // answers the way the API answers is kept. The same probe settles the
+    // call shape, which also differs between client builds: older ones take
+    // ({url, body}), newer ones (url, {body}).
+    const answersLikeApi = (res) =>
+      !!res && res.status === 200 && !!res.body &&
+      typeof res.body === "object" && typeof res.body.id === "string";
 
-      for (const style of styles) {
+    let api = null;
+    let apiStyle = null;
+
+    for (const cand of apiCandidates) {
+      for (const style of ["object", "positional"]) {
         let res;
         try {
           res = style === "object"
-            ? await api[method]({ url, body })
-            : await api[method](url, body === undefined ? undefined : { body });
-        } catch (e) {
-          // A rejection carrying a real status is a genuine answer, not a
-          // wrong call shape — keep the style and let the caller see it.
-          if ((e?.status || e?.body) && !isErrorPage(e)) { apiStyle = style; throw e; }
-          last = e;
+            ? await cand.get({ url: "/users/@me" })
+            : await cand.get("/users/@me");
+        } catch (_) {
           continue;
         }
-
-        if (isErrorPage(res)) { last = res; continue; }
+        if (!answersLikeApi(res)) continue;
+        api = cand;
         apiStyle = style;
-        return res;
+        break;
       }
+      if (api) break;
+    }
 
-      apiStyle = null;
-      if (last instanceof Error) throw last;
-      return last ?? { status: 0, body: null };
+    if (!api) {
+      die("api_unusable", { tried: apiCandidates.length });
+      return;
+    }
+
+    function request(method, url, body) {
+      return apiStyle === "object"
+        ? api[method]({ url, body })
+        : api[method](url, body === undefined ? undefined : { body });
     }
 
     const apiPost = (url, body) => request("post", url, body);
@@ -204,15 +222,6 @@
     const ApplicationStreamingStore = found.ApplicationStreamingStore;
     const ChannelStore = found.ChannelStore;
     const GuildChannelStore = found.GuildChannelStore;
-
-    // Only these three are required for any quest at all. The rest gate
-    // individual quest types and are reported per quest instead of killing the
-    // whole run.
-    const missing = ["api", "FluxDispatcher", "QuestsStore"].filter((k) => !found[k]);
-    if (missing.length) {
-      die("modules_failed", { missing: missing.join(", ") });
-      return;
-    }
 
     const manualClaim = new Set();
     const SUPPORTED = ["WATCH_VIDEO", "PLAY_ON_DESKTOP", "PLAY_ON_DESKTOP_V2", "STREAM_ON_DESKTOP", "PLAY_ACTIVITY", "WATCH_VIDEO_ON_MOBILE"];
@@ -258,7 +267,8 @@
       try {
         const res = await apiPost(`/quests/${quest.id}/enroll`, { location: LOC_QUEST_HOME });
         const t = res?.body?.type;
-        if (t === "success" || t === "previous_in_flight_request" || (res?.status === 200 && !t)) {
+        const jsonBody = res?.body && typeof res.body === "object";
+        if (t === "success" || t === "previous_in_flight_request" || (res?.status === 200 && jsonBody && !t)) {
           emit({ ev: "accepted", quest: name });
           await sleep(2000);
           return QuestsStore.getQuest(quest.id) ?? quest;
