@@ -45,6 +45,67 @@ function grabFunction(source, name) {
 // Fake webpack registry using export names that are deliberately NOT the ones
 // the old engine hardcoded. If the shape-based lookup works, the minified
 // names are irrelevant - which is the whole point of the change.
+// A Discord that keeps score. The stub it replaces answered 200 to everything,
+// which is precisely the blindness that let "accepted" and "reward claimed" be
+// printed while nothing had happened on the account.
+function apiServer(opts) {
+  const seen = [];
+  const page = { status: 404, body: '<!DOCTYPE html><html><head><title>Page Not Found</title></head></html>' };
+  const state = new Map();
+  const at = (id) => {
+    if (!state.has(id)) state.set(id, { enrolled: false, seconds: 0, completed: false, claimed: false });
+    return state.get(id);
+  };
+  const questOf = (id) => (opts.quests ? opts.quests.get(id) : null);
+  const targetOf = (q) => {
+    const tasks = q && q.config && q.config.taskConfig && q.config.taskConfig.tasks;
+    const t = tasks && (tasks.WATCH_VIDEO || tasks.PLAY_ON_DESKTOP);
+    return t ? t.target : 0;
+  };
+  const stamp = (q, field) => { q.userStatus = Object.assign({}, q.userStatus, { [field]: "now" }); };
+
+  function handle(url, body) {
+    seen.push(url);
+    if (url === "/users/@me") return { status: 200, body: { id: "42" } };
+    if (url.indexOf("/applications/public") === 0) return { status: 200, body: [] };
+
+    const m = /^\/quests\/([^/]+)\/(.+)$/.exec(url);
+    if (!m) return page;
+    const q = questOf(m[1]);
+    if (!q) return page;
+    const st = at(m[1]);
+
+    if (m[2] === "enroll") {
+      st.enrolled = true;
+      stamp(q, "enrolledAt");
+      return { status: 200, body: { type: "success" } };
+    }
+    if (m[2] === "video-progress") {
+      if (!st.enrolled) return { status: 400, body: { message: "not enrolled" } };
+      // opts.frozen: the server accepts the call but records nothing, the way
+      // it behaves when the client is not really watching.
+      if (!opts.frozen) {
+        st.seconds = Math.max(st.seconds, Math.floor((body && body.timestamp) || 0));
+        if (st.seconds >= targetOf(q)) { st.completed = true; stamp(q, "completedAt"); }
+      }
+      return { status: 200, body: { completed_at: st.completed ? "now" : null } };
+    }
+    if (m[2] === "heartbeat") {
+      if (!st.enrolled) return { status: 400, body: { message: "not enrolled" } };
+      return { status: 200, body: { progress: {} } };   // never advances
+    }
+    if (m[2] === "claim-reward") {
+      if (!st.completed) return { status: 400, body: { errors: [{ message: "quest not completed" }] } };
+      st.claimed = true;
+      stamp(q, "claimedAt");
+      return { status: 200, body: { ok: true } };
+    }
+    return page;
+  }
+
+  return { handle, seen, state };
+}
+
 // A minimal quest of the kind these tests care about: one video task.
 function videoQuest(id, name, userStatus, target) {
   return {
@@ -59,6 +120,21 @@ function videoQuest(id, name, userStatus, target) {
   };
 }
 
+// A play-on-desktop quest: progress can only come from the server, so when the
+// server never credits it the quest genuinely goes nowhere.
+function playQuest(id, name) {
+  return {
+    id,
+    config: {
+      expiresAt: "2099-01-01T00:00:00Z",
+      messages: { questName: name },
+      application: { id: "app-" + id, name: name },
+      taskConfig: { tasks: { PLAY_ON_DESKTOP: { target: 60 } } }
+    },
+    userStatus: null
+  };
+}
+
 function fakeDiscord(opts) {
   opts = opts || {};
   const store = Object.assign(
@@ -66,6 +142,7 @@ function fakeDiscord(opts) {
     { quests: opts.quests || new Map() }
   );
   const flux = Object.create({ dispatch() {}, subscribe() {}, unsubscribe() {} });
+  const server = apiServer(opts);
 
   const modules = {
     // Decoy listed first on purpose: same four verbs, but it talks to the web
@@ -75,19 +152,22 @@ function fakeDiscord(opts) {
       post() { return Promise.resolve({ status: 200, body: "<!DOCTYPE html><html></html>" }); },
       put() {}, patch() {}
     } } },
-    // The real client. opts.positional makes it accept only (url, {body}),
-    // the shape newer Discord builds use.
+    // The real client, backed by a Discord that keeps score.
+    // opts.positional makes it accept only (url, {body}), the shape newer
+    // Discord builds use.
     a1: { exports: { zZ: {
       get(a) {
-        const url = typeof a === "string" ? a : (a && a.url);
         if (opts.positional && typeof a !== "string") return Promise.reject({ status: 404, body: "<!doctype html>" });
         if (opts.apiBroken) return Promise.resolve({ status: 200, body: "<!DOCTYPE html><html></html>" });
-        if (url === "/users/@me") return Promise.resolve({ status: 200, body: { id: "42" } });
-        return Promise.resolve({ status: 200, body: {} });
+        const url = typeof a === "string" ? a : (a && a.url);
+        return Promise.resolve(server.handle(url));
       },
-      post(a) {
+      post(a, b) {
         if (opts.positional && typeof a !== "string") return Promise.reject({ status: 404, body: "<!doctype html>" });
-        return Promise.resolve({ status: 200, body: {} });
+        if (opts.apiBroken) return Promise.resolve({ status: 200, body: "<!DOCTYPE html><html></html>" });
+        const url = typeof a === "string" ? a : (a && a.url);
+        const body = typeof a === "string" ? (b && b.body) : (a && a.body);
+        return Promise.resolve(server.handle(url, body));
       },
       put() {}, patch() {}
     } } },
@@ -111,6 +191,7 @@ function fakeDiscord(opts) {
     return Array.prototype.push.call(this, arg);
   };
   chunk.pop = function () {};
+  chunk.__server = server;
   return chunk;
 }
 
@@ -131,16 +212,43 @@ async function runEngine(opts) {
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
-  if (!(opts && opts.noWebpack)) sandbox.webpackChunkdiscord_app = fakeDiscord(opts || {});
+  // The engine only fakes a running game when it believes it is inside the
+  // desktop client, which is where it always runs in practice.
+  if (opts && opts.desktop) sandbox.DiscordNative = {};
+
+  let chunk = null;
+  if (!(opts && opts.noWebpack)) {
+    chunk = fakeDiscord(opts || {});
+    sandbox.webpackChunkdiscord_app = chunk;
+  }
 
   const ctx = vm.createContext(sandbox);
-  const src = read("quest.js").replace("__ORB_SESSION__", "test-session");
+  let src = read("quest.js").replace("__ORB_SESSION__", "test-session");
+
+  // Only the waiting is shortened, never a decision. Real durations would make
+  // an end-to-end run take minutes; the logic under test is untouched.
+  if (opts && opts.fast) {
+    const before = src;
+    src = src
+      // Kept comfortably above one video step, or a quest would be called
+      // stalled while it is legitimately waiting. A test that wants a
+      // stall asks for a short threshold explicitly.
+      .replace("STALL_TIMEOUT_MS = 3 * 60 * 1000", "STALL_TIMEOUT_MS = " + (opts.stallMs || 2500))
+      .replace("SCAN_INTERVAL_MS = 20 * 1000", "SCAN_INTERVAL_MS = 60")
+      .replace("QUEST_RETRY_MS = 60 * 1000", "QUEST_RETRY_MS = 40")
+      .replace("ENROLL_COOLDOWN_MS = 3 * 60 * 1000", "ENROLL_COOLDOWN_MS = 40")
+      .replace("CLAIM_COOLDOWN_MS = 5 * 60 * 1000", "CLAIM_COOLDOWN_MS = 40")
+      .split("await sleep(2000)").join("await sleep(10)")
+      .split("await sleep(20 * 1000)").join("await sleep(25)");
+    if (src === before) throw new Error("fast mode rewrote nothing - the timing constants moved");
+  }
+
   vm.runInContext(src, ctx, { filename: "quest.js" });
 
   await sleep((opts && opts.wait) || 250);
   if (sandbox.window.__ORB__) sandbox.window.__ORB__.stop = true;
-  await sleep(50);
-  return { events, sandbox };
+  await sleep(60);
+  return { events, sandbox, server: chunk && chunk.__server };
 }
 
 (async function main() {
@@ -413,21 +521,25 @@ async function runEngine(opts) {
     }
   });
 
-  await check("the count of what is left describes the account, not our notes", async () => {
-    // One quest claimed, one still to do. "left" used to be computed from the
-    // set of quests we had already handled, so anything we gave up on stopped
-    // being counted and the app announced that everything was finished.
+  await check("a quest the server never credits is not counted as done", async () => {
+    // The server accepts every call but records no progress - what a wrong API
+    // client looked like from the inside. One quest is genuinely claimed, the
+    // other only thinks it is. "left" used to come from our own bookkeeping,
+    // so the second one vanished from the count and the app announced that
+    // everything was finished.
     const quests = new Map([
       ["q1", videoQuest("q1", "done one", { enrolledAt: "x", completedAt: "x", claimedAt: "x" })],
       ["q2", videoQuest("q2", "todo one", null, 0)]
     ]);
-    const { events } = await runEngine({ quests, wait: 3000 });
+    const { events } = await runEngine({ quests, frozen: true, fast: true, wait: 1500 });
     const last = events.filter((e) => e.ev === "tally").pop();
     assert(last, "no tally was ever produced");
     assert(last.total === 2, "total was " + last.total + ", expected 2");
     assert(last.done === 1, "done was " + last.done + ", expected 1");
     assert(last.left === 1, "left was " + last.left + ", expected 1 - an unfinished quest went missing");
     assert(!events.some((e) => e.ev === "all_done"), "announced that everything was finished");
+    assert(!events.some((e) => e.ev === "claimed" && e.quest === "todo one"),
+      "reported a reward the server refused to give");
   });
 
   await check("a quest that did not finish is not filed away as if it had", () => {
@@ -451,6 +563,68 @@ async function runEngine(opts) {
     const guardAt = upToEnd.indexOf('reason !== "done"');
     assert(guardAt !== -1, "settle no longer separates a finished quest from a stalled one");
     assert(claimAt > guardAt, "claiming still runs before the outcome is checked");
+  });
+
+  await check("every fatal engine event stops the launcher", () => {
+    // die() ends the engine. If the launcher does not treat the event as a
+    // failure it keeps thinking the run is alive and re-injects on the
+    // proof-of-life timeout, over and over.
+    const fatal = [...questSrc.matchAll(/die\("([a-z_]+)"/g)].map((m) => m[1]);
+    assert(fatal.length, "no die() calls found - the pattern moved");
+
+    const main = read("main.js");
+    const handled = main.slice(main.indexOf("function handleEngineEvent"));
+    for (const ev of new Set(fatal)) {
+      if (ev === "stopped") continue;   // the ordinary end of a run
+      assert(handled.includes('case "' + ev + '"'),
+        "main.js never treats " + ev + " as the end of the run");
+    }
+  });
+
+  console.log("\nend to end");
+
+  await check("four quests are carried from untouched to claimed", async () => {
+    // The whole point of the app, checked against a Discord that keeps score.
+    // Every assertion below reads the server's own record, not our log, so a
+    // run that only prints success cannot pass.
+    const quests = new Map();
+    for (let i = 1; i <= 4; i++) quests.set("q" + i, videoQuest("q" + i, "quest " + i, null, i === 4 ? 1 : 0));
+
+    const { events, server } = await runEngine({ quests, fast: true, wait: 6000 });
+
+    for (let i = 1; i <= 4; i++) {
+      const id = "q" + i;
+      const st = server.state.get(id);
+      assert(st, "quest " + i + " was never touched at all");
+      assert(st.enrolled, "quest " + i + " was never enrolled");
+      assert(st.completed, "quest " + i + " never reached its target");
+      assert(st.claimed, "quest " + i + " was never claimed");
+      assert(quests.get(id).userStatus.claimedAt, "the account has no claim recorded for quest " + i);
+    }
+
+    const last = events.filter((e) => e.ev === "tally").pop();
+    assert(last && last.total === 4, "tally total: " + JSON.stringify(last));
+    assert(last.done === 4, "tally says " + last.done + " claimed, the server says 4");
+    assert(last.left === 0, "tally still lists " + last.left + " to do");
+    const done = events.filter((e) => e.ev === "all_done");
+    assert(done.length === 1, "all_done fired " + done.length + " times, expected once");
+  });
+
+  await check("a quest that never progresses is retried, then handed back", async () => {
+    // Progress for a play quest can only come from the server, and this one
+    // never credits any. The quest must not be quietly dropped, and it must
+    // not be reported as finished.
+    const quests = new Map([["p1", playQuest("p1", "stuck one")]]);
+    const { events } = await runEngine({ quests, desktop: true, fast: true, stallMs: 150, wait: 4000 });
+
+    assert(events.some((e) => e.ev === "quest_later"), "a stalled quest was never given a second try");
+    assert(events.some((e) => e.ev === "quest_gaveup"), "gave up silently instead of handing it back");
+    assert(!events.some((e) => e.ev === "claimed"), "claimed a reward for a quest that never moved");
+    assert(!events.some((e) => e.ev === "all_done"), "announced that everything was finished");
+
+    const last = events.filter((e) => e.ev === "tally").pop();
+    assert(last && last.left === 1, "the stuck quest vanished from the count: " + JSON.stringify(last));
+    assert(last.manual === 1, "the stuck quest was not flagged as needing a hand");
   });
 
   console.log("\njournal");

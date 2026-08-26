@@ -460,7 +460,11 @@ function handleEngineEvent(e) {
     case "all_done":
       send("sniper:done", { done: e.done, manual: e.manual });
       break;
+    // Both of these mean the engine has stopped for good. Without the second
+    // one the launcher kept believing a run was alive and re-injected on the
+    // proof-of-life timeout, forever.
     case "modules_failed":
+    case "api_unusable":
       send("sniper:event", e);
       fail(null);
       return;
