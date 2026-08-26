@@ -154,6 +154,50 @@
     }
 
     const api = found.api;
+
+    // Discord changed the shape of its internal API module between client
+    // builds: newer ones take (url, {body}) where older ones took ({url, body}).
+    // Handing the object form to a new client stringifies it into the request
+    // path, and Discord answers with its 404 HTML page. Probe both shapes once,
+    // then stay with whichever the running client accepts.
+    let apiStyle = null;   // "object" | "positional"
+
+    function isErrorPage(res) {
+      const b = res?.body;
+      if (typeof b === "string" && /^\s*<(!doctype|html)/i.test(b)) return true;
+      return res?.status === 404;
+    }
+
+    async function request(method, url, body) {
+      const styles = apiStyle ? [apiStyle] : ["object", "positional"];
+      let last = null;
+
+      for (const style of styles) {
+        let res;
+        try {
+          res = style === "object"
+            ? await api[method]({ url, body })
+            : await api[method](url, body === undefined ? undefined : { body });
+        } catch (e) {
+          // A rejection carrying a real status is a genuine answer, not a
+          // wrong call shape — keep the style and let the caller see it.
+          if ((e?.status || e?.body) && !isErrorPage(e)) { apiStyle = style; throw e; }
+          last = e;
+          continue;
+        }
+
+        if (isErrorPage(res)) { last = res; continue; }
+        apiStyle = style;
+        return res;
+      }
+
+      apiStyle = null;
+      if (last instanceof Error) throw last;
+      return last ?? { status: 0, body: null };
+    }
+
+    const apiPost = (url, body) => request("post", url, body);
+    const apiGet = (url) => request("get", url);
     const FluxDispatcher = found.FluxDispatcher;
     const QuestsStore = found.QuestsStore;
     const RunningGameStore = found.RunningGameStore;
@@ -183,27 +227,36 @@
     const nameOf = (quest) => quest?.config?.messages?.questName ?? "quest";
 
     // Discord answers with plain objects, not Errors.
+    // An error page is thousands of characters of markup. Never let it reach
+    // the console: report what it means instead of what it says.
+    const clean = (t) => {
+      const x = String(t);
+      if (/<(!doctype|html)/i.test(x)) return "HTTP 404";
+      const flat = x.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+      return flat.length > 160 ? flat.slice(0, 160) + "…" : flat;
+    };
+
     function describe(e) {
       if (!e) return "unknown";
-      if (typeof e === "string") return e;
-      if (e.message) return e.message;
+      if (typeof e === "string") return clean(e);
+      if (e.message) return clean(e.message);
       const status = e.status ?? e.statusCode;
       const body = e.body ?? e.response?.body;
       const detail =
         body?.message ||
         body?.errors?.[0]?.message ||
         (body && typeof body === "object" ? JSON.stringify(body).slice(0, 160) : body);
-      if (status && detail) return `HTTP ${status}: ${detail}`;
+      if (status && detail) return `HTTP ${status}: ${clean(detail)}`;
       if (status) return `HTTP ${status}`;
-      if (detail) return String(detail);
-      try { return JSON.stringify(e).slice(0, 160); } catch (_) { return String(e); }
+      if (detail) return clean(detail);
+      try { return clean(JSON.stringify(e)); } catch (_) { return clean(e); }
     }
     const isCaptcha = (x) => /captcha/i.test(String(x || ""));
 
     async function enroll(quest) {
       const name = nameOf(quest);
       try {
-        const res = await api.post({ url: `/quests/${quest.id}/enroll`, body: { location: LOC_QUEST_HOME } });
+        const res = await apiPost(`/quests/${quest.id}/enroll`, { location: LOC_QUEST_HOME });
         const t = res?.body?.type;
         if (t === "success" || t === "previous_in_flight_request" || (res?.status === 200 && !t)) {
           emit({ ev: "accepted", quest: name });
@@ -211,7 +264,7 @@
           return QuestsStore.getQuest(quest.id) ?? quest;
         }
         if (isCaptcha(t)) emit({ ev: "captcha", quest: name, at: "accept" });
-        else emit({ ev: "accept_failed", quest: name, why: String(t || res?.status || "unknown") });
+        else emit({ ev: "accept_failed", quest: name, why: clean(t || res?.status || describe(res)) });
         return null;
       } catch (e) {
         const why = describe(e);
@@ -232,7 +285,7 @@
 
       try {
         emit({ ev: "claiming", quest: name });
-        const res = await api.post({ url: `/quests/${quest.id}/claim-reward`, body: { location: LOC_QUEST_HOME, platform: PLATFORM_PC } });
+        const res = await apiPost(`/quests/${quest.id}/claim-reward`, { location: LOC_QUEST_HOME, platform: PLATFORM_PC });
         const errs = res?.body?.errors;
         if (res?.status === 200 && (!errs || errs.length === 0)) {
           claimTries.delete(quest.id);
@@ -331,10 +384,10 @@
 
               const timestamp = secondsDone + speed;
               try {
-                const res = await api.post({
-                  url: `/quests/${quest.id}/video-progress`,
-                  body: { timestamp: Math.min(secondsNeeded, timestamp + Math.random()) }
-                });
+                const res = await apiPost(
+                  `/quests/${quest.id}/video-progress`,
+                  { timestamp: Math.min(secondsNeeded, timestamp + Math.random()) }
+                );
                 completed = res?.body?.completed_at != null;
               } catch (e) {
                 // This used to reject out of the IIFE and hang the watcher.
@@ -347,7 +400,7 @@
             }
             if (settled) return;
             if (!completed) {
-              try { await api.post({ url: `/quests/${quest.id}/video-progress`, body: { timestamp: secondsNeeded } }); }
+              try { await apiPost(`/quests/${quest.id}/video-progress`, { timestamp: secondsNeeded }); }
               catch (e) { emit({ ev: "api_retry", quest: questName, why: describe(e) }); }
             }
             settle("done");
@@ -360,7 +413,7 @@
           // The spoof only makes the Discord UI show the game as running.
           // Heartbeats do the real work, so a missing store is not fatal here.
           if (RunningGameStore) {
-            api.get({ url: `/applications/public?application_ids=${applicationId}` }).then((res) => {
+            apiGet(`/applications/public?application_ids=${applicationId}`).then((res) => {
               if (settled || !res?.body?.[0]) return;
               const appData = res.body[0];
               const exeName = appData.executables?.find((x) => x.os === "win32")?.name?.replace(">", "")
@@ -398,10 +451,10 @@
               const why = stopped();
               if (why) { settle(why); return; }
               try {
-                const res = await api.post({ url: `/quests/${quest.id}/heartbeat`, body: { application_id: applicationId, terminal: false } });
+                const res = await apiPost(`/quests/${quest.id}/heartbeat`, { application_id: applicationId, terminal: false });
                 progress(res?.body?.progress?.[taskName]?.value);
                 if (secondsDone >= secondsNeeded) {
-                  api.post({ url: `/quests/${quest.id}/heartbeat`, body: { application_id: applicationId, terminal: true } }).catch(() => {});
+                  apiPost(`/quests/${quest.id}/heartbeat`, { application_id: applicationId, terminal: true }).catch(() => {});
                   settle("done");
                   return;
                 }
@@ -456,7 +509,7 @@
               const why = stopped();
               if (why) { settle(why); return; }
               try {
-                const res = await api.post({ url: `/quests/${quest.id}/heartbeat`, body: { stream_key: streamKey, terminal: false } });
+                const res = await apiPost(`/quests/${quest.id}/heartbeat`, { stream_key: streamKey, terminal: false });
                 // This was res.body.progress.PLAY_ACTIVITY.value with no guards:
                 // one odd response wedged the watcher for good.
                 progress(res?.body?.progress?.PLAY_ACTIVITY?.value);
@@ -466,7 +519,7 @@
                 continue;
               }
               if (secondsDone >= secondsNeeded) {
-                try { await api.post({ url: `/quests/${quest.id}/heartbeat`, body: { stream_key: streamKey, terminal: true } }); } catch (_) {}
+                try { await apiPost(`/quests/${quest.id}/heartbeat`, { stream_key: streamKey, terminal: true }); } catch (_) {}
                 settle("done");
                 return;
               }

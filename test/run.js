@@ -326,6 +326,53 @@ async function runEngine(opts) {
     }
   });
 
+  await check("every API call goes through the shape-probing wrapper", () => {
+    const direct = questCode.split("\n").filter((l) => /\bapi\.(post|get)\s*\(/.test(l));
+    assert(direct.length === 0,
+      "quest.js calls api." + (direct[0] || "").trim() + " directly - a client that wants " +
+      "(url, {body}) would get the object stringified into the request path");
+    assert(/const apiPost = /.test(questCode) && /const apiGet = /.test(questCode),
+      "the apiPost/apiGet wrappers are missing");
+  });
+
+  await check("a wrong call shape is retried with the other one", async () => {
+    // Two fake clients, one per signature. Whichever we guess wrong must be
+    // detected by the 404 HTML page and retried the other way round.
+    const HTML = '<!DOCTYPE html><html><head><title>Page Not Found | Discord</title></head></html>';
+    const src = questCode.slice(questCode.indexOf("let apiStyle"), questCode.indexOf("const apiPost"));
+
+    for (const shape of ["object", "positional"]) {
+      const api = {
+        async post(a, b) {
+          const objectCall = typeof a !== "string";
+          if ((shape === "object") !== objectCall) return { status: 404, body: HTML };
+          return { status: 200, body: { ok: true, url: objectCall ? a.url : a } };
+        }
+      };
+      const ctx = { api, module: {} };
+      vm.createContext(ctx);
+      vm.runInContext(src + "\nmodule.post = (u, b) => request('post', u, b);", ctx);
+
+      const res = await ctx.module.post("/quests/1/enroll", { location: 11 });
+      assert(res.status === 200, shape + " client: wrapper never found a working shape");
+      assert(res.body.url === "/quests/1/enroll", shape + " client: wrong url reached the API");
+    }
+  });
+
+  await check("an error page never reaches the console", () => {
+    const HTML = '<!DOCTYPE html><html lang="ru"><head><title>Page Not Found</title></head>' +
+                 "<body>" + "<div>filler</div>".repeat(400) + "</body></html>";
+    const src = questCode.slice(questCode.indexOf("const clean ="), questCode.indexOf("const isCaptcha"));
+    const ctx = { module: {} };
+    vm.createContext(ctx);
+    vm.runInContext(src + "\nmodule.clean = clean; module.describe = describe;", ctx);
+
+    for (const out of [ctx.module.clean(HTML), ctx.module.describe(HTML), ctx.module.describe({ body: HTML })]) {
+      assert(!/<[a-z!]/i.test(out), "markup leaked into the message: " + out.slice(0, 80));
+      assert(out.length <= 200, "message is " + out.length + " chars - an error page would flood the log");
+    }
+  });
+
   console.log(`\n${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);
 })();
