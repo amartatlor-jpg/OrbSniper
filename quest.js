@@ -43,6 +43,7 @@
   const ENROLL_COOLDOWN_MS = 3 * 60 * 1000; // wait before re-trying a failed accept
   const CLAIM_COOLDOWN_MS = 5 * 60 * 1000;  // wait before re-trying a failed claim
   const ALIVE_INTERVAL_MS = 30 * 1000;      // proof-of-life for the launcher
+  const API_TIMEOUT_MS = 15000;
   const QUEST_RETRY_MS = 60 * 1000;         // wait before re-working a stalled quest
   const MAX_QUEST_TRIES = 4;                // then stop and say so
 
@@ -191,9 +192,10 @@
       for (const style of ["object", "positional"]) {
         let res;
         try {
-          res = style === "object"
-            ? await cand.get({ url: "/users/@me" })
-            : await cand.get("/users/@me");
+          res = await Promise.race([
+            Promise.resolve(style === "object" ? cand.get({ url: "/users/@me" }) : cand.get("/users/@me")),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("API probe timed out")), API_TIMEOUT_MS))
+          ]);
         } catch (_) {
           continue;
         }
@@ -211,9 +213,13 @@
     }
 
     function request(method, url, body) {
-      return apiStyle === "object"
+      const work = apiStyle === "object"
         ? api[method]({ url, body })
         : api[method](url, body === undefined ? undefined : { body });
+      return Promise.race([
+        Promise.resolve(work),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(method.toUpperCase() + " " + url + " timed out")), API_TIMEOUT_MS))
+      ]);
     }
 
     const apiPost = (url, body) => request("post", url, body);
